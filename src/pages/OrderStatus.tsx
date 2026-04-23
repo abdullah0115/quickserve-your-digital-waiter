@@ -1,0 +1,150 @@
+import { useEffect, useState } from "react";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { Clock, ChefHat, CheckCircle, Bell, RefreshCw, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
+import { SEO } from "@/components/SEO";
+import { cn } from "@/lib/utils";
+
+interface Order {
+  id: string; token_number: number; status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
+  customer_name: string; items: Array<{ name: string; quantity: number; price: number }>;
+  total_amount: number; created_at: string; business_id: string;
+}
+interface Business { name: string; slug: string; }
+
+const STEPS = [
+  { status: "pending" as const, icon: Clock, label: "Order Received" },
+  { status: "preparing" as const, icon: ChefHat, label: "Being Prepared" },
+  { status: "ready" as const, icon: CheckCircle, label: "Ready for Pickup" },
+];
+const idx = (s: string) => STEPS.findIndex((x) => x.status === s);
+
+export default function OrderStatus() {
+  const { slug, token } = useParams();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const orderId = params.get("id");
+  const [order, setOrder] = useState<Order | null>(null);
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const { data: biz } = await supabase.from("businesses").select("name,slug,id").eq("slug", slug!).maybeSingle();
+      if (!biz) { setLoading(false); return; }
+      setBusiness(biz as Business);
+      let q = supabase.from("orders").select("*").eq("business_id", biz.id);
+      q = orderId ? q.eq("id", orderId) : q.eq("token_number", Number(token));
+      const { data } = await q.order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (data) setOrder(data as unknown as Order);
+      setLoading(false);
+    })();
+  }, [slug, token, orderId]);
+
+  useEffect(() => {
+    if (!order) return;
+    const ch = supabase.channel(`order-${order.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${order.id}` },
+        (p) => setOrder((prev) => prev ? { ...prev, ...(p.new as Partial<Order>) } : prev))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [order]);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div>;
+  if (!order || !business) return (
+    <div className="min-h-screen flex items-center justify-center text-center px-4">
+      <div><p className="text-muted-foreground mb-4">Order not found</p><Button onClick={() => navigate(`/${slug}`)}>Back</Button></div>
+    </div>
+  );
+
+  const currentIdx = idx(order.status);
+  const statusText = order.status === "ready" ? "Ready!" : order.status === "preparing" ? "Being Prepared" : order.status === "completed" ? "Complete" : "Confirmed";
+
+  return (
+    <>
+      <SEO title={`Order #${order.token_number} — ${business.name}`} description={`Track your order at ${business.name}`} noIndex />
+      <div className="min-h-screen bg-gradient-hero pattern-warm py-12 px-4">
+        <div className="max-w-xl mx-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+            <Card className="shadow-warm border-border/60">
+              <CardContent className="p-8">
+                {/* Token */}
+                <div className="text-center mb-8">
+                  <motion.div
+                    initial={{ scale: 0 }} animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                    className="inline-flex items-center justify-center w-32 h-32 rounded-full bg-gradient-warm mb-4 shadow-warm"
+                  >
+                    <span className="font-mono text-5xl font-bold text-accent-foreground">#{order.token_number}</span>
+                  </motion.div>
+                  <h1 className="font-display text-3xl font-bold mb-1">Your order is {statusText}</h1>
+                  <p className="text-sm text-muted-foreground">{business.name} · {format(new Date(order.created_at), "h:mm a")}</p>
+                </div>
+
+                {/* Steps */}
+                <div className="space-y-5 mb-8">
+                  {STEPS.map((step, i) => {
+                    const active = currentIdx >= i;
+                    const current = currentIdx === i;
+                    return (
+                      <motion.div key={step.status} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.15 }} className="flex items-center gap-4">
+                        <div className={cn(
+                          "w-12 h-12 rounded-full flex items-center justify-center transition-all",
+                          active ? "bg-gradient-sage shadow-soft" : "bg-muted",
+                          current && "ring-4 ring-secondary/30"
+                        )}>
+                          <step.icon className={cn("w-5 h-5", active ? "text-secondary-foreground" : "text-muted-foreground")} />
+                        </div>
+                        <div className="flex-1">
+                          <p className={cn("font-semibold", active ? "text-foreground" : "text-muted-foreground")}>{step.label}</p>
+                        </div>
+                        {active && <CheckCircle className="w-5 h-5 text-secondary" />}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+
+                {/* Items */}
+                <div className="border-t pt-5 mb-5">
+                  <h3 className="font-semibold mb-3">Order Details</h3>
+                  <div className="space-y-1.5">
+                    {order.items.map((it, i) => (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{it.quantity}× {it.name}</span>
+                        <span className="font-mono">PKR {(it.price * it.quantity).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between pt-3 mt-3 border-t font-semibold">
+                    <span>Total</span><span className="font-mono">PKR {Number(order.total_amount).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {order.status === "ready" && (
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-gradient-sage text-secondary-foreground p-6 rounded-2xl text-center mb-5">
+                      <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+                        <Bell className="w-12 h-12 mx-auto mb-2" />
+                      </motion.div>
+                      <h3 className="font-display text-2xl font-bold mb-1">Your order is ready!</h3>
+                      <p className="text-secondary-foreground/90 text-sm">Please collect from the counter</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1" onClick={() => window.location.reload()}><RefreshCw className="w-4 h-4 mr-2" /> Refresh</Button>
+                  <Button variant="outline" className="flex-1" onClick={() => navigate(`/${slug}/menu`)}>Order Again</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      </div>
+    </>
+  );
+}
