@@ -42,8 +42,7 @@ export default function Home() {
                   <span className="text-xs font-medium">14-day free trial · No credit card</span>
                 </div>
                 <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] text-balance">
-                  Eliminate the queue.
-                  <br />
+                  Eliminate the queue.{" "}
                   <span className="bg-gradient-warm bg-clip-text text-transparent">Elevate</span> the experience.
                 </h1>
                 <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl leading-relaxed">
