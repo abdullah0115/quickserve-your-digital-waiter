@@ -20,8 +20,8 @@ export default function Home() {
   return (
     <>
       <SEO
-        title="QuickServe — Smart Restaurant Queue & QR Ordering System"
-        description="Eliminate the queue, elevate the experience. QuickServe is the modern QR ordering and kitchen display platform designed for cafes and restaurants."
+        title="QuickWaiters — Smart Restaurant Queue & QR Ordering System"
+        description="Eliminate the queue, elevate the experience. QuickWaiters is the modern QR ordering and kitchen display platform designed for cafes and restaurants."
         image={heroImg}
       />
       <div className="min-h-screen bg-background">
@@ -79,7 +79,7 @@ export default function Home() {
                   alt="Modern cafe interior with friendly barista"
                   width={1600}
                   height={1200}
-                  className="relative rounded-3xl shadow-warm w-full h-auto object-cover aspect-[4/3]"
+                  className="relative rounded-3xl shadow-warm w-full h-auto object-cover aspect-4/3"
                 />
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -184,7 +184,7 @@ export default function Home() {
                   "Built-in analytics for every order",
                 ].map((p) => (
                   <li key={p} className="flex items-start gap-3">
-                    <div className="mt-0.5 w-5 h-5 rounded-full bg-secondary/15 flex items-center justify-center flex-shrink-0">
+                    <div className="mt-0.5 w-5 h-5 rounded-full bg-secondary/15 flex items-center justify-center shrink-0">
                       <Check className="w-3 h-3 text-secondary" />
                     </div>
                     <span className="text-foreground">{p}</span>
