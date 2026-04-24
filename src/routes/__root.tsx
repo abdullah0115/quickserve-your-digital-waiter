@@ -65,7 +65,9 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <HelmetProvider>
-        <App />
+        <ClientOnly fallback={<div />}>
+          <App />
+        </ClientOnly>
         <Toaster richColors position="top-center" />
       </HelmetProvider>
     </QueryClientProvider>
