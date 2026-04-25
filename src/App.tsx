@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -21,24 +21,22 @@ function PageLoader() {
   );
 }
 
-export function App() {
+export default function App() {
   return (
-    <BrowserRouter>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/dashboard/*" element={<Dashboard />} />
-          <Route path="/:slug" element={<BusinessLanding />} />
-          <Route path="/:slug/menu" element={<Menu />} />
-          <Route path="/:slug/order/:token" element={<OrderStatus />} />
-          <Route path="/:slug/display" element={<DisplayScreen />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard/*" element={<Dashboard />} />
+        <Route path="/:slug" element={<BusinessLanding />} />
+        <Route path="/:slug/menu" element={<Menu />} />
+        <Route path="/:slug/order/:token" element={<OrderStatus />} />
+        <Route path="/:slug/display" element={<DisplayScreen />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
   );
 }
