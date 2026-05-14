@@ -17,6 +17,29 @@ const queryClient = new QueryClient({
   },
 })
 
+// PWA Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const { registerSW } = await import('virtual:pwa-register')
+      
+      registerSW({
+        immediate: true,
+        onNeedRefresh() {
+          if (confirm('New version available! Reload to update?')) {
+            window.location.reload()
+          }
+        },
+        onOfflineReady() {
+          console.log('App ready to work offline')
+        },
+      })
+    } catch (e) {
+      console.log('PWA not available:', e)
+    }
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <HelmetProvider>
