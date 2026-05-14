@@ -88,6 +88,7 @@ export default defineConfig({
         clientsClaim: true
       },
       
+      // In dev, registration uses `/dev-sw.js?dev-sw`; Vite serves the generated `dev-dist/sw.js` for that URL (not a missing file on disk).
       devOptions: {
         enabled: true,
         type: 'module'
