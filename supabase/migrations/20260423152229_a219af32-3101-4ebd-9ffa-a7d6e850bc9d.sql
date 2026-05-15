@@ -1,11 +1,20 @@
--- ============ ENUMS ============
-CREATE TYPE public.subscription_status AS ENUM ('trial', 'active', 'past_due', 'canceled');
-CREATE TYPE public.order_status AS ENUM ('pending', 'preparing', 'ready', 'completed', 'cancelled');
-CREATE TYPE public.order_type AS ENUM ('dine_in', 'takeaway');
-CREATE TYPE public.app_role AS ENUM ('admin', 'owner', 'staff');
-
+-- ============ ENUMS (SAFE VERSION) ============
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'subscription_status') THEN
+        CREATE TYPE public.subscription_status AS ENUM ('trial', 'active', 'past_due', 'canceled');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_status') THEN
+        CREATE TYPE public.order_status AS ENUM ('pending', 'preparing', 'ready', 'completed', 'cancelled');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_type') THEN
+        CREATE TYPE public.order_type AS ENUM ('dine_in', 'takeaway');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'app_role') THEN
+        CREATE TYPE public.app_role AS ENUM ('admin', 'owner', 'staff');
+    END IF;
+END $$;
 -- ============ USER ROLES (separate table for security) ============
-CREATE TABLE public.user_roles (
+CREATE TABLE IF NOT EXISTS public.user_roles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   business_id UUID,
@@ -39,7 +48,7 @@ CREATE POLICY "Users can view their own roles" ON public.user_roles
   FOR SELECT USING (auth.uid() = user_id);
 
 -- ============ SUBSCRIPTION PLANS ============
-CREATE TABLE public.subscription_plans (
+CREATE TABLE IF NOT EXISTS public.subscription_plans (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
@@ -62,7 +71,7 @@ ALTER TABLE public.subscription_plans ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Plans are publicly viewable" ON public.subscription_plans FOR SELECT USING (true);
 
 -- ============ BUSINESSES ============
-CREATE TABLE public.businesses (
+CREATE TABLE IF NOT EXISTS public.businesses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -103,7 +112,7 @@ CREATE POLICY "Owners can delete their business" ON public.businesses
   FOR DELETE USING (auth.uid() = owner_id);
 
 -- ============ MENU CATEGORIES ============
-CREATE TABLE public.menu_categories (
+CREATE TABLE IF NOT EXISTS public.menu_categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -121,7 +130,7 @@ CREATE POLICY "Owners manage their categories" ON public.menu_categories
   WITH CHECK (EXISTS (SELECT 1 FROM public.businesses b WHERE b.id = business_id AND b.owner_id = auth.uid()));
 
 -- ============ MENU ITEMS ============
-CREATE TABLE public.menu_items (
+CREATE TABLE IF NOT EXISTS public.menu_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
   category_id UUID REFERENCES public.menu_categories(id) ON DELETE SET NULL,
@@ -148,7 +157,7 @@ CREATE POLICY "Owners manage their items" ON public.menu_items
   WITH CHECK (EXISTS (SELECT 1 FROM public.businesses b WHERE b.id = business_id AND b.owner_id = auth.uid()));
 
 -- ============ ORDERS ============
-CREATE TABLE public.orders (
+CREATE TABLE IF NOT EXISTS public.orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
   token_number INTEGER NOT NULL,
@@ -196,7 +205,7 @@ CREATE TRIGGER trg_set_order_token
   FOR EACH ROW EXECUTE FUNCTION public.set_order_token();
 
 -- ============ QR CODES ============
-CREATE TABLE public.qr_codes (
+CREATE TABLE IF NOT EXISTS public.qr_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
   table_number TEXT NOT NULL,
@@ -212,7 +221,7 @@ CREATE POLICY "Owners manage QR codes" ON public.qr_codes
   WITH CHECK (EXISTS (SELECT 1 FROM public.businesses b WHERE b.id = business_id AND b.owner_id = auth.uid()));
 
 -- ============ ANALYTICS ============
-CREATE TABLE public.business_analytics (
+CREATE TABLE IF NOT EXISTS public.business_analytics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
   date DATE NOT NULL,
