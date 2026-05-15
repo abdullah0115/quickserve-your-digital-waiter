@@ -12,6 +12,9 @@ const BusinessLanding = lazy(() => import("./pages/BusinessLanding"));
 const Menu = lazy(() => import("./pages/Menu"));
 const OrderStatus = lazy(() => import("./pages/OrderStatus"));
 const DisplayScreen = lazy(() => import("./pages/DisplayScreen"));
+import { OfflineIndicator } from "./components/OfflineIndicator"
+
+;
 
 function PageLoader() {
   return (
@@ -24,6 +27,7 @@ function PageLoader() {
 export default function App() {
   return (
     <Suspense fallback={<PageLoader />}>
+      <OfflineIndicator />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/pricing" element={<Pricing />} />
