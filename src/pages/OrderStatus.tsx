@@ -19,6 +19,7 @@ interface Order {
   id: string; token_number: number; status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
   customer_name: string; items: Array<{ name: string; quantity: number; price: number }>;
   total_amount: number; created_at: string; business_id: string;
+  table_number: string | null; order_type: "dine_in" | "takeaway";
 }
 interface Business { name: string; slug: string; id: string; }
 
@@ -244,7 +245,22 @@ export default function OrderStatus() {
 
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1" onClick={() => window.location.reload()}><RefreshCw className="w-4 h-4 mr-2" /> Refresh</Button>
-                  <Button variant="outline" className="flex-1" onClick={() => navigate(`/${slug}/menu`)}>Order Again</Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      // Carry the table/order-type forward so ordering again
+                      // from the same visit doesn't lose track of which
+                      // table this is for — the customer already told us.
+                      const qs = new URLSearchParams();
+                      if (order.table_number) qs.set("table", order.table_number);
+                      if (order.order_type === "takeaway") qs.set("type", "takeaway");
+                      const query = qs.toString();
+                      navigate(`/${slug}/menu${query ? `?${query}` : ""}`);
+                    }}
+                  >
+                    Order Again
+                  </Button>
                 </div>
               </CardContent>
             </Card>
