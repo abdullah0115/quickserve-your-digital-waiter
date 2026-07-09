@@ -23,6 +23,14 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Environment variables (Supabase keys etc.) — never commit
+.env
+.env.*
+!.env.example
+
+# Supabase CLI local machine state
+supabase/.temp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

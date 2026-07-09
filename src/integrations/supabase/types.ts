@@ -260,6 +260,60 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          business_id: string | null
+          created_at: string
+          data: Json | null
+          id: string
+          is_read: boolean
+          message: string | null
+          order_id: string | null
+          title: string
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string | null
+        }
+        Insert: {
+          business_id?: string | null
+          created_at?: string
+          data?: Json | null
+          id?: string
+          is_read?: boolean
+          message?: string | null
+          order_id?: string | null
+          title: string
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id?: string | null
+        }
+        Update: {
+          business_id?: string | null
+          created_at?: string
+          data?: Json | null
+          id?: string
+          is_read?: boolean
+          message?: string | null
+          order_id?: string | null
+          title?: string
+          type?: Database["public"]["Enums"]["notification_type"]
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           business_id: string
@@ -442,7 +496,15 @@ export type Database = {
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -460,6 +522,26 @@ export type Database = {
         Args: { _business_id: string; _user_id: string }
         Returns: boolean
       }
+      get_order_status: {
+        Args: {
+          p_business_slug: string
+          p_order_id?: string
+          p_token_number?: number
+          p_customer_phone?: string
+        }
+        Returns: {
+          id: string
+          token_number: number
+          status: Database["public"]["Enums"]["order_status"]
+          customer_name: string
+          items: Json
+          total_amount: number
+          table_number: string | null
+          order_type: Database["public"]["Enums"]["order_type"]
+          created_at: string
+          business_id: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "owner" | "staff"
@@ -470,6 +552,7 @@ export type Database = {
         | "completed"
         | "cancelled"
       order_type: "dine_in" | "takeaway"
+      notification_type: "new_order" | "order_ready" | "order_completed"
       subscription_status: "trial" | "active" | "past_due" | "canceled"
     }
     CompositeTypes: {
@@ -601,6 +684,7 @@ export const Constants = {
       app_role: ["admin", "owner", "staff"],
       order_status: ["pending", "preparing", "ready", "completed", "cancelled"],
       order_type: ["dine_in", "takeaway"],
+      notification_type: ["new_order", "order_ready", "order_completed"],
       subscription_status: ["trial", "active", "past_due", "canceled"],
     },
   },

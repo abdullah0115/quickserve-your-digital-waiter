@@ -27,7 +27,9 @@ export default function BusinessLanding() {
 
   useEffect(() => {
     (async () => {
-      const { data: biz } = await supabase.from("businesses").select("*").eq("slug", slug!).maybeSingle();
+      const { data: biz } = await supabase.from("businesses")
+        .select("id,name,slug,tagline,description,cover_image_url,logo_url,phone,email,address,city,cuisine_type,theme_color")
+        .eq("slug", slug!).maybeSingle();
       if (!biz) { setLoading(false); return; }
       setBusiness(biz as unknown as Business);
       const { data: items } = await supabase.from("menu_items").select("id,name,description,price,image_url")
@@ -70,13 +72,13 @@ export default function BusinessLanding() {
       />
       <div className="min-h-screen bg-background">
         {/* HERO */}
-        <section className="relative h-[60vh] min-h-[420px] overflow-hidden">
+        <section className="relative h-[60vh] min-h-105 overflow-hidden">
           {business.cover_image_url ? (
             <img src={business.cover_image_url} alt={business.name} className="absolute inset-0 w-full h-full object-cover" />
           ) : (
             <div className="absolute inset-0 bg-gradient-coffee" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/40 to-black/70" />
+          <div className="absolute inset-0 bg-linear-to-b from-black/30 via-black/40 to-black/70" />
           <div className="relative z-10 container mx-auto px-4 h-full flex flex-col justify-end pb-12 text-white">
             <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
               <h1 className="font-display text-5xl md:text-7xl font-bold mb-3 text-balance">{business.name}</h1>

@@ -1,62 +1,34 @@
 import { useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/integrations/supabase/client'
+import type { Database } from '@/integrations/supabase/types'
 
-// Safe fallbacks to prevent generated type errors
-export interface UserProfile {
+type AppRole = Database['public']['Enums']['app_role']
+
+export interface UserRoleRow {
   id: string
-  email: string
-  full_name?: string
-  role: 'owner' | 'staff' | 'customer'
-  business_id?: string
-  phone?: string
-}
-
-export interface BusinessMember {
-  role: 'owner' | 'staff'
-  permissions: {
-    can_edit_menu: boolean
-    can_view_orders: boolean
-    can_change_status: boolean
-  }
+  business_id: string | null
+  role: AppRole
 }
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [businessMember, setBusinessMember] = useState<BusinessMember | null>(null)
+  const [roles, setRoles] = useState<UserRoleRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  async function loadProfile(userId: string) {
+  async function loadRoles(userId: string) {
     try {
-      // (supabase as any) used to prevent table overload/missing type crashes
-      const { data: profileData, error: profileError } = await (supabase as any)
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('id, business_id, role')
+        .eq('user_id', userId)
 
-      if (profileError) throw profileError
-
-      if (profileData) {
-        setProfile(profileData as UserProfile)
-
-        // If user is linked to a business, fetch member roles/permissions
-        if (profileData.business_id) {
-          const { data: memberData, error: memberError } = await (supabase as any)
-            .from('business_members')
-            .select('role, permissions')
-            .eq('user_id', userId)
-            .eq('business_id', profileData.business_id)
-            .maybeSingle()
-
-          if (memberError) throw memberError
-          setBusinessMember(memberData as BusinessMember)
-        }
-      }
+      if (error) throw error
+      setRoles(data ?? [])
     } catch (error) {
-      console.error('Error loading profile or permissions:', error)
+      console.error('Error loading user roles:', error)
+      setRoles([])
     } finally {
       setLoading(false)
     }
@@ -67,12 +39,11 @@ export function useAuth() {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, currentSession) => {
       setSession(currentSession)
       setUser(currentSession?.user ?? null)
-      
+
       if (currentSession?.user) {
-        loadProfile(currentSession.user.id)
+        loadRoles(currentSession.user.id)
       } else {
-        setProfile(null)
-        setBusinessMember(null)
+        setRoles([])
         setLoading(false)
       }
     })
@@ -81,9 +52,9 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       setSession(initialSession)
       setUser(initialSession?.user ?? null)
-      
+
       if (initialSession?.user) {
-        loadProfile(initialSession.user.id)
+        loadRoles(initialSession.user.id)
       } else {
         setLoading(false)
       }
@@ -92,21 +63,18 @@ export function useAuth() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  // Explicit type-safe getters for roles and features protection
-  const canEditMenu = 
-    businessMember?.role === 'owner' || 
-    businessMember?.permissions?.can_edit_menu === true
+  // A user currently has at most one business via the onboarding flow
+  // (owner) or an invite (staff) — take the first role's business.
+  const businessId = roles.find((r) => r.business_id)?.business_id ?? null
+  const isOwner = roles.some((r) => r.role === 'owner')
+  const isStaff = roles.some((r) => r.role === 'staff')
 
-  const canViewOrders = 
-    businessMember?.role === 'owner' || 
-    businessMember?.permissions?.can_view_orders === true
-
-  const canChangeOrderStatus = 
-    businessMember?.role === 'owner' || 
-    businessMember?.permissions?.can_change_status === true
-
-  const isOwner = businessMember?.role === 'owner'
-  const isStaff = businessMember?.role === 'staff'
+  // There's no granular per-permission system yet — owners and staff both
+  // get full dashboard access at the RLS layer (see user_roles / is_business_member
+  // in the schema). These flags are here for UI-level gating if that's ever added.
+  const canEditMenu = isOwner || isStaff
+  const canViewOrders = isOwner || isStaff
+  const canChangeOrderStatus = isOwner || isStaff
 
   async function signOut() {
     setLoading(true)
@@ -116,8 +84,8 @@ export function useAuth() {
   return {
     session,
     user,
-    profile,
-    businessMember,
+    roles,
+    businessId,
     loading,
     canEditMenu,
     canViewOrders,

@@ -12,8 +12,8 @@ import {
 import { format } from 'date-fns'
 
 export function NotificationBell() {
-  const { user, profile } = useAuth()
-  const { notifications, unreadCount, markAsRead } = useNotifications(user?.id, profile?.business_id)
+  const { businessId } = useAuth()
+  const { notifications, unreadCount, markAsRead } = useNotifications(undefined, businessId ?? undefined)
 
   return (
     <DropdownMenu>

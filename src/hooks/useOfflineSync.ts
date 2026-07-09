@@ -8,6 +8,7 @@ import {
   addLocalNotification 
 } from '@/lib/db'
 import { toast } from 'sonner'
+import { playNotificationSound } from '@/lib/notificationSound'
 
 type OrderStatus = Database['public']['Enums']['order_status']
 
@@ -165,16 +166,5 @@ export function useOfflineSync(businessSlug?: string) {
     pendingCount,
     syncProgress,
     syncPendingOrders,
-  }
-}
-
-// Sound Helper
-function playNotificationSound() {
-  try {
-    const audio = new Audio('/notification.mp3')
-    audio.volume = 0.4
-    audio.play().catch(() => {})
-  } catch (e) {
-    // Ignore sound errors
   }
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { toast } from 'sonner'
 import { addLocalNotification, getUnreadNotifications } from '@/lib/db'
+import { playNotificationSound } from '@/lib/notificationSound'
 
 // Explicit Fallback Type Definition to bypass missing generated table keys
 export type NotificationRow = {
@@ -26,7 +27,7 @@ export function useNotifications(userId?: string, businessId?: string) {
     try {
       // 1. Online Network Fetch
       if (navigator.onLine) {
-        let query = (supabase as any)
+        let query = supabase
           .from('notifications')
           .select('*')
           .order('created_at', { ascending: false })
@@ -71,7 +72,7 @@ export function useNotifications(userId?: string, businessId?: string) {
       : `business_id=eq.${businessId}`
 
     const channel = supabase
-      .channel('public:notifications')
+      .channel(`notifications-${userId ?? businessId}`)
       .on(
         'postgres_changes',
         {
@@ -124,7 +125,7 @@ export function useNotifications(userId?: string, businessId?: string) {
   // Update read status handler
   async function markAsRead(notificationId: string) {
     try {
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })
         .eq('id', notificationId)
@@ -155,18 +156,5 @@ export function useNotifications(userId?: string, businessId?: string) {
     markAsRead,
     requestPermission,
     reload: loadNotifications,
-  }
-}
-
-// Global Audio Engine Helper
-function playNotificationSound() {
-  try {
-    const audio = new Audio('/notification.mp3')
-    audio.volume = 0.6
-    audio.play().catch(() => {
-      // Browser autoplay blockage bypass safely
-    })
-  } catch (e) {
-    // Fail silently on hardware exceptions
   }
 }

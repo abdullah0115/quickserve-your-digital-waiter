@@ -12,6 +12,7 @@ import { useCart } from "@/store/cart";
 import { toast } from "sonner";
 import { SEO } from "@/components/SEO";
 import { cn } from "@/lib/utils";
+import { saveLastOrder, getLastOrder, clearLastOrder } from "@/lib/lastOrder";
 
 interface Business { id: string; name: string; slug: string; }
 interface Cat { id: string; name: string; display_order: number; }
@@ -19,6 +20,13 @@ interface Item {
   id: string; name: string; description: string | null; price: number;
   category_id: string | null; image_url: string | null; is_available: boolean; is_featured: boolean;
 }
+interface ActiveOrder { id: string; token_number: number; status: string; }
+
+const ACTIVE_ORDER_LABEL: Record<string, string> = {
+  pending: "Order Received",
+  preparing: "Being Prepared",
+  ready: "Ready for Pickup!",
+};
 
 export default function Menu() {
   const { slug } = useParams();
@@ -36,6 +44,7 @@ export default function Menu() {
   const [cartOpen, setCartOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [checkout, setCheckout] = useState({ name: "", phone: "", notes: "" });
+  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
 
   const cart = useCart();
 
@@ -54,6 +63,23 @@ export default function Menu() {
     })();
   }, [slug]);
 
+  // If this browser placed an order at this business that isn't finished yet,
+  // show it right on the menu — so the customer doesn't have to dig up the link.
+  useEffect(() => {
+    const ref = getLastOrder(slug!);
+    if (!ref) return;
+    supabase.rpc("get_order_status", { p_business_slug: slug!, p_order_id: ref.id })
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data || data.status === "completed" || data.status === "cancelled") {
+          clearLastOrder(slug!);
+          setActiveOrder(null);
+        } else {
+          setActiveOrder({ id: data.id, token_number: data.token_number, status: data.status });
+        }
+      });
+  }, [slug]);
+
   const filtered = useMemo(() => items.filter((it) => {
     if (selectedCat !== "all" && it.category_id !== selectedCat) return false;
     if (search && !it.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -65,21 +91,27 @@ export default function Menu() {
     if (!checkout.name) return toast.error("Please enter your name");
     setPlacing(true);
     try {
-      const { data, error } = await supabase.from("orders").insert({
-        business_id: business.id,
-        token_number: 0, // overridden by trigger
-        customer_name: checkout.name,
-        customer_phone: checkout.phone || null,
-        items: cart.items.map((i) => ({ menu_item_id: i.id, name: i.name, quantity: i.quantity, price: i.price })),
-        total_amount: cart.total(),
-        table_number: tableNumber,
-        order_type: orderType,
-        notes: checkout.notes || null,
-      }).select().single();
+      // Prices/total are never sent from here — the create-order function
+      // (and the compute_order_total DB trigger behind it) look up real
+      // menu_items prices server-side and ignore anything else we'd claim.
+      const { data, error } = await supabase.functions.invoke("create-order", {
+        body: {
+          business_slug: slug,
+          customer_name: checkout.name,
+          customer_phone: checkout.phone || undefined,
+          items: cart.items.map((i) => ({ menu_item_id: i.id, quantity: i.quantity })),
+          table_number: tableNumber || undefined,
+          order_type: orderType,
+          notes: checkout.notes || undefined,
+        },
+      });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const order = data.data as { id: string; token_number: number };
       cart.clear();
-      toast.success(`Order #${data.token_number} placed!`);
-      navigate(`/${slug}/order/${data.token_number}?id=${data.id}`);
+      saveLastOrder(slug!, { id: order.id, tokenNumber: order.token_number });
+      toast.success(`Order #${order.token_number} placed!`);
+      navigate(`/${slug}/order/${order.token_number}?id=${order.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to place order");
     } finally { setPlacing(false); }
@@ -97,6 +129,23 @@ export default function Menu() {
       <div className="min-h-screen bg-background pb-32">
         {/* Header */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b">
+          {activeOrder && (
+            <div className="bg-accent text-accent-foreground">
+              <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium">
+                  Order #{activeOrder.token_number} · {ACTIVE_ORDER_LABEL[activeOrder.status] ?? activeOrder.status}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-accent-foreground hover:bg-accent-foreground/10"
+                  onClick={() => navigate(`/${slug}/order/${activeOrder.token_number}?id=${activeOrder.id}`)}
+                >
+                  View status
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Button size="icon" variant="ghost" onClick={() => navigate(`/${slug}`)}><ArrowLeft className="w-5 h-5" /></Button>
@@ -179,9 +228,9 @@ export default function Menu() {
                 <motion.div key={it.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={cn("rounded-2xl border bg-card overflow-hidden", !it.is_available && "opacity-50")}>
                   <div className="relative">
                     {it.image_url ? (
-                      <img src={it.image_url} alt={it.name} className="w-full aspect-[4/3] object-cover" />
+                      <img src={it.image_url} alt={it.name} className="w-full aspect-4/3 object-cover" />
                     ) : (
-                      <div className="w-full aspect-[4/3] bg-gradient-warm flex items-center justify-center"><UtensilsCrossed className="w-10 h-10 text-accent-foreground" /></div>
+                      <div className="w-full aspect-4/3 bg-gradient-warm flex items-center justify-center"><UtensilsCrossed className="w-10 h-10 text-accent-foreground" /></div>
                     )}
                     {it.is_featured && <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground"><Star className="w-3 h-3 mr-0.5 fill-current" />Popular</Badge>}
                     {!it.is_available && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><span className="bg-card px-3 py-1 rounded-full text-sm font-medium">Out of stock</span></div>}

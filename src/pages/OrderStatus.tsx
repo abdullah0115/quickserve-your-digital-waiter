@@ -4,7 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Clock, ChefHat, CheckCircle, Bell, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { SEO } from "@/components/SEO";
 import { cn } from "@/lib/utils";
@@ -14,7 +17,7 @@ interface Order {
   customer_name: string; items: Array<{ name: string; quantity: number; price: number }>;
   total_amount: number; created_at: string; business_id: string;
 }
-interface Business { name: string; slug: string; }
+interface Business { name: string; slug: string; id: string; }
 
 const STEPS = [
   { status: "pending" as const, icon: Clock, label: "Order Received" },
@@ -31,19 +34,31 @@ export default function OrderStatus() {
   const [order, setOrder] = useState<Order | null>(null);
   const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsPhone, setNeedsPhone] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [checkingPhone, setCheckingPhone] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     (async () => {
       const { data: biz } = await supabase.from("businesses").select("name,slug,id").eq("slug", slug!).maybeSingle();
-      if (!biz) { setLoading(false); return; }
+      if (!biz) { setLoading(false); setNotFound(true); return; }
       setBusiness(biz as Business);
-      let q = supabase.from("orders").select("*").eq("business_id", biz.id);
-      q = orderId ? q.eq("id", orderId) : q.eq("token_number", Number(token));
-      const { data } = await q.order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (data) setOrder(data as unknown as Order);
-      setLoading(false);
+
+      if (orderId) {
+        const { data } = await supabase
+          .rpc("get_order_status", { p_business_slug: slug!, p_order_id: orderId })
+          .maybeSingle();
+        if (data) setOrder(data as unknown as Order); else setNotFound(true);
+        setLoading(false);
+      } else {
+        // No capability id in the URL (e.g. a manually-typed /slug/order/:token link) —
+        // require the phone number the order was placed with before revealing anything.
+        setNeedsPhone(true);
+        setLoading(false);
+      }
     })();
-  }, [slug, token, orderId]);
+  }, [slug, orderId]);
 
   useEffect(() => {
     if (!order) return;
@@ -54,8 +69,50 @@ export default function OrderStatus() {
     return () => { supabase.removeChannel(ch); };
   }, [order]);
 
+  const lookupByPhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone.trim()) return toast.error("Enter the phone number used for this order");
+    setCheckingPhone(true);
+    const { data } = await supabase
+      .rpc("get_order_status", { p_business_slug: slug!, p_token_number: Number(token), p_customer_phone: phone.trim() })
+      .maybeSingle();
+    if (data) {
+      setOrder(data as unknown as Order);
+      setNeedsPhone(false);
+    } else {
+      toast.error("No matching order found for that phone number");
+    }
+    setCheckingPhone(false);
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div>;
-  if (!order || !business) return (
+
+  if (business && needsPhone && !order) {
+    return (
+      <>
+        <SEO title={`Order #${token} — ${business.name}`} description={`Track your order at ${business.name}`} noIndex />
+        <div className="min-h-screen bg-gradient-hero pattern-warm flex items-center justify-center px-4">
+          <Card className="w-full max-w-sm shadow-warm border-border/60">
+            <CardContent className="p-8">
+              <h1 className="font-display text-2xl font-bold mb-1 text-center">Track order #{token}</h1>
+              <p className="text-sm text-muted-foreground mb-6 text-center">Enter the phone number you used to place this order.</p>
+              <form onSubmit={lookupByPhone} className="space-y-4">
+                <div>
+                  <Label htmlFor="phone">Phone number</Label>
+                  <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+92 300 1234567" className="mt-1.5" />
+                </div>
+                <Button type="submit" disabled={checkingPhone} className="w-full bg-primary hover:bg-primary-hover text-primary-foreground h-11">
+                  {checkingPhone ? <Loader2 className="w-4 h-4 animate-spin" /> : "View order status"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
+  if (notFound || !order || !business) return (
     <div className="min-h-screen flex items-center justify-center text-center px-4">
       <div><p className="text-muted-foreground mb-4">Order not found</p><Button onClick={() => navigate(`/${slug}`)}>Back</Button></div>
     </div>

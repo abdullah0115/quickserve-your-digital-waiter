@@ -21,6 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SEO } from "@/components/SEO";
+import { NotificationBell } from "@/components/NotificationBell";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -52,17 +53,44 @@ export default function Dashboard() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
+  const [liveCount, setLiveCount] = useState(0);
 
   useEffect(() => {
     if (authLoading) return;
     if (!user) { navigate("/auth"); return; }
     supabase.from("businesses").select("id,name,slug").eq("owner_id", user.id).limit(1).maybeSingle()
-      .then(({ data }) => {
-        if (!data) navigate("/onboarding");
-        else setBusiness(data as Business);
-        setLoading(false);
-      });
+      .then(
+        ({ data, error }) => {
+          if (error) { toast.error(error.message); setLoading(false); return; }
+          if (!data) navigate("/onboarding");
+          else setBusiness(data as Business);
+          setLoading(false);
+        },
+        (err) => {
+          toast.error(err instanceof Error ? err.message : "Failed to load dashboard");
+          setLoading(false);
+        }
+      );
   }, [user, authLoading, navigate]);
+
+  // Live-order count for the sidebar badge — independent of whichever tab is
+  // active, so it stays accurate even while looking at Menu/Analytics/etc.
+  useEffect(() => {
+    if (!business?.id) return;
+    const bizId = business.id;
+    const loadCount = async () => {
+      const { count } = await supabase.from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", bizId)
+        .in("status", ["pending", "preparing", "ready"]);
+      setLiveCount(count ?? 0);
+    };
+    loadCount();
+    const ch = supabase.channel(`live-count-${bizId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `business_id=eq.${bizId}` }, loadCount)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [business?.id]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -77,6 +105,9 @@ export default function Dashboard() {
     <>
       <SEO title={`Dashboard — ${business.name}`} description="Manage your business" noIndex />
       <div className="min-h-screen bg-muted/30 flex">
+        <div className="fixed top-4 right-4 z-50">
+          <NotificationBell />
+        </div>
         {/* Sidebar */}
         <aside className="hidden lg:flex w-64 bg-card border-r flex-col">
           <div className="p-6 border-b">
@@ -99,6 +130,11 @@ export default function Dashboard() {
                 )}
               >
                 <n.icon className="w-4 h-4" /> {n.label}
+                {n.id === "orders" && liveCount > 0 && (
+                  <Badge className="ml-auto bg-accent text-accent-foreground h-5 min-w-5 px-1.5 flex items-center justify-center text-xs">
+                    {liveCount}
+                  </Badge>
+                )}
               </button>
             ))}
           </nav>
@@ -115,13 +151,19 @@ export default function Dashboard() {
         {/* Main */}
         <main className="flex-1 overflow-auto">
           {/* Mobile tabs */}
-          <div className="lg:hidden bg-card border-b p-3 sticky top-0 z-10">
-            <Select value={tab} onValueChange={setTab}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {NAV.map((n) => <SelectItem key={n.id} value={n.id}>{n.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="lg:hidden bg-card border-b p-3 sticky top-0 z-10 flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <Select value={tab} onValueChange={setTab}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {NAV.map((n) => (
+                    <SelectItem key={n.id} value={n.id}>
+                      {n.label}{n.id === "orders" && liveCount > 0 ? ` (${liveCount})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="p-6 lg:p-10 max-w-7xl mx-auto">
@@ -209,13 +251,16 @@ function Overview({ business }: { business: Business }) {
 
 function OrdersKDS({ business }: { business: Business }) {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from("orders").select("*")
+    const { data, error } = await supabase.from("orders").select("*")
       .eq("business_id", business.id)
       .in("status", ["pending", "preparing", "ready"])
       .order("created_at", { ascending: true });
-    if (data) setOrders(data as unknown as Order[]);
+    if (error) toast.error(error.message);
+    else setOrders(data as unknown as Order[]);
+    setLoading(false);
   }, [business.id]);
 
   useEffect(() => {
@@ -227,8 +272,14 @@ function OrdersKDS({ business }: { business: Business }) {
   }, [business.id, load]);
 
   const updateStatus = async (id: string, status: Order["status"]) => {
-    const { error } = await supabase.from("orders").update({ status, ...(status === "completed" ? { completed_at: new Date().toISOString() } : {}) }).eq("id", id);
-    if (error) toast.error(error.message); else toast.success(`Order marked as ${status}`);
+    const completedAt = status === "completed" ? new Date().toISOString() : undefined;
+    const { error } = await supabase.from("orders").update({ status, ...(completedAt ? { completed_at: completedAt } : {}) }).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Order marked as ${status}`);
+    // Update the board immediately instead of waiting on the realtime
+    // round-trip — that channel is still there to pick up changes made by
+    // other staff/devices, but our own click shouldn't need to wait for it.
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status, ...(completedAt ? { completed_at: completedAt } : {}) } : o)));
   };
 
   const cols = [
@@ -243,6 +294,9 @@ function OrdersKDS({ business }: { business: Business }) {
         <h1 className="font-display text-3xl font-bold">Live Orders</h1>
         <p className="text-muted-foreground mt-1">Real-time kitchen display. Updates instantly.</p>
       </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : (
       <div className="grid md:grid-cols-3 gap-4">
         {cols.map((col) => {
           const list = orders.filter((o) => o.status === col.status);
@@ -297,6 +351,7 @@ function OrdersKDS({ business }: { business: Business }) {
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -586,7 +641,7 @@ function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (
     name: business.name, tagline: "", description: "", phone: "", address: "", cover_image_url: "",
   });
   useEffect(() => {
-    supabase.from("businesses").select("*").eq("id", business.id).single().then(({ data }) => {
+    supabase.from("businesses").select("name,tagline,description,phone,address,cover_image_url").eq("id", business.id).single().then(({ data }) => {
       if (data) setForm({
         name: data.name, tagline: data.tagline ?? "", description: data.description ?? "",
         phone: data.phone ?? "", address: data.address ?? "", cover_image_url: data.cover_image_url ?? "",

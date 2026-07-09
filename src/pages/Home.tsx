@@ -1,9 +1,10 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, QrCode, Monitor, Smartphone, BarChart3, Zap, Lock, Play, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SEO } from "@/components/SEO";
 import { MarketingNav, MarketingFooter } from "@/components/marketing/MarketingShell";
+import { useAuth } from "@/hooks/useAuth";
 import heroImg from "@/assets/hero-cafe.jpg";
 import featureImg from "@/assets/feature-qr.jpg";
 
@@ -17,6 +18,10 @@ const features = [
 ];
 
 export default function Home() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const ctaHref = user ? "/dashboard" : "/auth?mode=signup";
+
   return (
     <>
       <SEO
@@ -50,11 +55,9 @@ export default function Home() {
                   The smart QR ordering system designed for modern cafes and restaurants. No more shouting. No more chaos. Just delighted customers.
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                  <Link to="/auth?mode=signup">
-                    <Button size="lg" className="bg-primary hover:bg-primary-hover text-primary-foreground h-12 px-7 text-base shadow-warm">
-                      Start Free Trial <ArrowRight className="ml-2 w-4 h-4" />
-                    </Button>
-                  </Link>
+                  <Button size="lg" onClick={() => navigate(ctaHref)} className="bg-primary hover:bg-primary-hover text-primary-foreground h-12 px-7 text-base shadow-warm">
+                    Start Free Trial <ArrowRight className="ml-2 w-4 h-4" />
+                  </Button>
                   <Link to="/pricing">
                     <Button size="lg" variant="outline" className="h-12 px-7 text-base">
                       <Play className="mr-2 w-4 h-4" /> See Pricing
@@ -191,11 +194,9 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              <Link to="/auth?mode=signup">
-                <Button size="lg" className="bg-secondary hover:bg-secondary-hover text-secondary-foreground h-12 px-7">
-                  Get Started Free <ArrowRight className="ml-2 w-4 h-4" />
-                </Button>
-              </Link>
+              <Button size="lg" onClick={() => navigate(ctaHref)} className="bg-secondary hover:bg-secondary-hover text-secondary-foreground h-12 px-7">
+                Get Started Free <ArrowRight className="ml-2 w-4 h-4" />
+              </Button>
             </motion.div>
           </div>
         </section>
@@ -212,11 +213,9 @@ export default function Home() {
                 <p className="text-lg text-primary-foreground/80 mb-8">
                   Start your 14-day free trial. No credit card required. Cancel anytime.
                 </p>
-                <Link to="/auth?mode=signup">
-                  <Button size="lg" className="bg-accent hover:bg-accent-hover text-accent-foreground h-13 px-8 text-base shadow-glow font-semibold">
-                    Start Free Trial <ArrowRight className="ml-2 w-4 h-4" />
-                  </Button>
-                </Link>
+                <Button size="lg" onClick={() => navigate(ctaHref)} className="bg-accent hover:bg-accent-hover text-accent-foreground h-13 px-8 text-base shadow-glow font-semibold">
+                  Start Free Trial <ArrowRight className="ml-2 w-4 h-4" />
+                </Button>
               </div>
             </div>
           </div>

@@ -88,9 +88,12 @@ export default defineConfig({
         clientsClaim: true
       },
       
-      // In dev, registration uses `/dev-sw.js?dev-sw`; Vite serves the generated `dev-dist/sw.js` for that URL (not a missing file on disk).
+      // Disabled in dev — the dev service worker fights with Vite's HMR
+      // (stale caches serving mismatched modules, silent blank-screen
+      // regressions with no console error). Production builds are
+      // unaffected; test the real PWA/offline behavior via `npm run preview`.
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: 'module'
       }
     })

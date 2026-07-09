@@ -65,16 +65,11 @@ export default function Onboarding() {
           subscription_plan_id: plan?.id ?? null,
           subscription_status: "trial",
         })
-        .select()
+        .select("id")
         .single();
       if (error) throw error;
-
-      // Create owner role
-      await supabase.from("user_roles").insert({
-        user_id: user.id,
-        business_id: biz.id,
-        role: "owner",
-      });
+      // The owner role in user_roles is created automatically by a DB
+      // trigger on business insert — no client-side insert needed.
 
       // Seed a default category
       await supabase.from("menu_categories").insert({
