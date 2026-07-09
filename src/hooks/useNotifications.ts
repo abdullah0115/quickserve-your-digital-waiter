@@ -139,7 +139,7 @@ export function useNotifications(userId?: string, businessId?: string) {
   }
 
   // Permission request API for System UI Notifications
-  async function requestPermission() {
+  const requestPermission = useCallback(async () => {
     if ('Notification' in window) {
       if (Notification.permission === 'default') {
         const permission = await Notification.requestPermission()
@@ -148,7 +148,7 @@ export function useNotifications(userId?: string, businessId?: string) {
       return Notification.permission === 'granted'
     }
     return false
-  }
+  }, [])
 
   return {
     notifications,
