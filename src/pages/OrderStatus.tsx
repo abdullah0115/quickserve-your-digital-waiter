@@ -11,6 +11,9 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { SEO } from "@/components/SEO";
 import { cn } from "@/lib/utils";
+import { addOrderToHistory, updateOrderHistoryStatus } from "@/lib/orderHistory";
+import { playNotificationSound, unlockNotificationAudio } from "@/lib/notificationSound";
+import { ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/useMyOrders";
 
 interface Order {
   id: string; token_number: number; status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
@@ -49,7 +52,13 @@ export default function OrderStatus() {
         const { data } = await supabase
           .rpc("get_order_status", { p_business_slug: slug!, p_order_id: orderId })
           .maybeSingle();
-        if (data) setOrder(data as unknown as Order); else setNotFound(true);
+        if (data) {
+          setOrder(data as unknown as Order);
+          addOrderToHistory(slug!, { id: data.id, tokenNumber: data.token_number });
+          updateOrderHistoryStatus(slug!, data.id, data.status);
+        } else {
+          setNotFound(true);
+        }
         setLoading(false);
       } else {
         // No capability id in the URL (e.g. a manually-typed /slug/order/:token link) —
@@ -64,10 +73,48 @@ export default function OrderStatus() {
     if (!order) return;
     const ch = supabase.channel(`order-${order.id}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${order.id}` },
-        (p) => setOrder((prev) => prev ? { ...prev, ...(p.new as Partial<Order>) } : prev))
+        (p) => {
+          const prevStatus = (p.old as Partial<Order> | null)?.status;
+          const next = p.new as Partial<Order>;
+          setOrder((prev) => (prev ? { ...prev, ...next } : prev));
+          if (next.status && next.status !== prevStatus) {
+            updateOrderHistoryStatus(slug!, order.id, next.status);
+            const label = ORDER_STATUS_LABEL[next.status] ?? next.status;
+            toast.info(`Order #${order.token_number} — ${label}`);
+            playNotificationSound();
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification(`Order #${order.token_number} — ${label}`, {
+                body: next.status === "ready" ? "Please collect from the counter" : undefined,
+                icon: "/pwa-192x192.png",
+              });
+            }
+          }
+        })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [order]);
+    // Resubscribing only on id change (not every status tick) avoids
+    // tearing down and rejoining the channel on each realtime event.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id]);
+
+  // Audio and the native notification prompt both need a real user gesture
+  // first — ask for both on the first tap/keypress so status changes can
+  // alert even while this tab is in the background/minimized.
+  useEffect(() => {
+    if (!order || !ACTIVE_ORDER_STATUSES.has(order.status)) return;
+    const unlock = () => {
+      unlockNotificationAudio();
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    };
+    document.addEventListener("pointerdown", unlock, { once: true });
+    document.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      document.removeEventListener("pointerdown", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+  }, [order?.id, order?.status]);
 
   const lookupByPhone = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +125,8 @@ export default function OrderStatus() {
       .maybeSingle();
     if (data) {
       setOrder(data as unknown as Order);
+      addOrderToHistory(slug!, { id: data.id, tokenNumber: data.token_number });
+      updateOrderHistoryStatus(slug!, data.id, data.status);
       setNeedsPhone(false);
     } else {
       toast.error("No matching order found for that phone number");
