@@ -15,20 +15,25 @@ import { unlockNotificationAudio } from '@/lib/notificationSound'
 
 export function NotificationBell() {
   const { businessId } = useAuth()
-  const { notifications, unreadCount, markAsRead } = useNotifications(undefined, businessId ?? undefined)
+  const { notifications, unreadCount, markAsRead, requestPermission } = useNotifications(undefined, businessId ?? undefined)
 
-  // Browsers block audio until there's been a real user gesture on the page.
-  // Unlock it on the first click/keypress so it's already running by the
-  // time a realtime notification tries to play a sound of its own accord.
+  // Browsers block audio until there's been a real user gesture on the page,
+  // and the native OS notification prompt needs one too. Unlock/ask on the
+  // first click/keypress so both are ready before a realtime notification
+  // tries to use them of its own accord — this is also what makes new-order
+  // alerts visible while the dashboard tab is in the background/minimized.
   useEffect(() => {
-    const unlock = () => unlockNotificationAudio()
+    const unlock = () => {
+      unlockNotificationAudio()
+      requestPermission()
+    }
     document.addEventListener('pointerdown', unlock, { once: true })
     document.addEventListener('keydown', unlock, { once: true })
     return () => {
       document.removeEventListener('pointerdown', unlock)
       document.removeEventListener('keydown', unlock)
     }
-  }, [])
+  }, [requestPermission])
 
   return (
     <DropdownMenu>
