@@ -560,7 +560,11 @@ function QrManager({ business }: { business: Business }) {
       </CardContent></Card>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {codes.map((q) => {
-          const url = `${window.location.origin}/${business.slug}/menu?table=${encodeURIComponent(q.table_number)}`;
+          // Uses the QR row's own unguessable id, not the human-readable
+          // table number — table_number is resolved server-side from this
+          // id, so no one can claim to be at a table just by editing the
+          // URL (see supabase/migrations/20260710020000_qr_verified_table_number.sql).
+          const url = `${window.location.origin}/${business.slug}/menu?qr=${q.id}`;
           return (
             <Card key={q.id}><CardContent className="p-5 text-center">
               <div className="bg-white p-4 rounded-xl inline-block mb-3 shadow-soft">

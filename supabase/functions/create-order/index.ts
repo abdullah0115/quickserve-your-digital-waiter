@@ -35,7 +35,10 @@ const createOrderSchema = z.object({
   customer_name: z.string().trim().min(1, "customer_name is required").max(100),
   customer_phone: z.string().trim().max(20).optional(),
   items: z.array(orderItemSchema).min(1, "Order must include at least one item").max(50),
-  table_number: z.string().trim().max(20).optional(),
+  // A verified QR code id, not a raw table number — anyone could otherwise
+  // claim to be at any table just by editing the URL. table_number is
+  // always resolved server-side from this id (see qr_codes lookup below).
+  qr_code_id: z.string().uuid().optional(),
   order_type: z.enum(["dine_in", "takeaway"]),
   notes: z.string().trim().max(300).optional(),
 });
@@ -84,6 +87,42 @@ Deno.serve(async (req) => {
       return respond({ error: "Business not found or inactive" });
     }
 
+    // Resolve the real table number from a verified, active QR code for
+    // this business — table_number is never taken from the client
+    // directly. The resolve_order_table DB trigger re-derives this exact
+    // same way at insert time regardless of what's sent here.
+    let tableNumber: string | null = null;
+    if (body.qr_code_id) {
+      const { data: qr } = await supabase
+        .from("qr_codes")
+        .select("table_number, is_active, business_id")
+        .eq("id", body.qr_code_id)
+        .maybeSingle();
+      if (!qr || !qr.is_active || qr.business_id !== business.id) {
+        return respond({ error: "Invalid or inactive QR code — please scan the code at your table." });
+      }
+      tableNumber = qr.table_number;
+    }
+
+    // One active order per table at a time — check first for a friendly,
+    // specific message; the partial unique index on orders (see migration
+    // 20260710010000) is the atomic backstop that actually closes the race
+    // if two devices submit for the same table at the same instant.
+    if (tableNumber) {
+      const { data: existingOrder } = await supabase
+        .from("orders")
+        .select("token_number")
+        .eq("business_id", business.id)
+        .eq("table_number", tableNumber)
+        .in("status", ["pending", "preparing", "ready"])
+        .maybeSingle();
+      if (existingOrder) {
+        return respond({
+          error: `Table ${tableNumber} already has an active order (#${existingOrder.token_number}). Please wait for it to be completed before placing a new order.`,
+        });
+      }
+    }
+
     const itemIds = [...new Set(body.items.map((i) => i.menu_item_id))];
     const { data: menuItems, error: itemsErr } = await supabase
       .from("menu_items")
@@ -120,13 +159,22 @@ Deno.serve(async (req) => {
         customer_phone: body.customer_phone?.trim() || null,
         items: orderItems,
         total_amount: total,
-        table_number: body.table_number || null,
+        qr_code_id: body.qr_code_id ?? null,
         order_type: body.order_type,
         notes: body.notes || null,
       })
       .select("id, token_number, total_amount")
       .single();
-    if (insertErr) throw insertErr;
+    if (insertErr) {
+      // 23505 = unique_violation — the two-devices-at-once race the
+      // pre-check above couldn't catch in time.
+      if (insertErr.code === "23505") {
+        return respond({
+          error: `Table ${tableNumber ?? ""} already has an active order in progress. Please wait for it to be completed before placing a new order.`,
+        });
+      }
+      throw insertErr;
+    }
 
     return respond({ data: order });
   } catch (err) {
