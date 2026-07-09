@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SEO } from "@/components/SEO";
+import { onboardingSchema, firstZodError } from "@/lib/validation";
 
 const slugify = (s: string) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
@@ -31,6 +32,8 @@ export default function Onboarding() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    const parsed = onboardingSchema.safeParse({ name, tagline, city, cuisine, phone });
+    if (!parsed.success) return toast.error(firstZodError(parsed));
     setLoading(true);
     try {
       const baseSlug = slugify(name);

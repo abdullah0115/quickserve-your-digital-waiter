@@ -14,6 +14,7 @@
 // the offline sync queue (useOfflineSync.ts) still inserts directly and
 // relies on the DB trigger alone.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.6";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -21,21 +22,23 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-interface OrderItemInput {
-  menu_item_id: string;
-  quantity: number;
-  notes?: string;
-}
+// Mirrors src/lib/validation.ts's checkoutFormSchema — client-side validation
+// is only ever a UX nicety, this is the boundary that actually matters.
+const orderItemSchema = z.object({
+  menu_item_id: z.string().uuid("Invalid menu item id"),
+  quantity: z.number().int().min(1).max(50),
+  notes: z.string().trim().max(200).optional(),
+});
 
-interface CreateOrderInput {
-  business_slug: string;
-  customer_name: string;
-  customer_phone?: string;
-  items: OrderItemInput[];
-  table_number?: string;
-  order_type: "dine_in" | "takeaway";
-  notes?: string;
-}
+const createOrderSchema = z.object({
+  business_slug: z.string().trim().min(1, "business_slug is required"),
+  customer_name: z.string().trim().min(1, "customer_name is required").max(100),
+  customer_phone: z.string().trim().max(20).optional(),
+  items: z.array(orderItemSchema).min(1, "Order must include at least one item").max(50),
+  table_number: z.string().trim().max(20).optional(),
+  order_type: z.enum(["dine_in", "takeaway"]),
+  notes: z.string().trim().max(300).optional(),
+});
 
 function respond(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -52,25 +55,18 @@ Deno.serve(async (req) => {
     return respond({ error: "Method not allowed" });
   }
 
-  let body: Partial<CreateOrderInput>;
+  let rawBody: unknown;
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
     return respond({ error: "Invalid JSON body" });
   }
 
-  if (!body.business_slug || typeof body.business_slug !== "string") {
-    return respond({ error: "business_slug is required" });
+  const parsed = createOrderSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return respond({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   }
-  if (!body.customer_name || typeof body.customer_name !== "string" || !body.customer_name.trim()) {
-    return respond({ error: "customer_name is required" });
-  }
-  if (!Array.isArray(body.items) || body.items.length === 0) {
-    return respond({ error: "Order must include at least one item" });
-  }
-  if (body.order_type !== "dine_in" && body.order_type !== "takeaway") {
-    return respond({ error: "order_type must be dine_in or takeaway" });
-  }
+  const body = parsed.data;
 
   try {
     const supabase = createClient(

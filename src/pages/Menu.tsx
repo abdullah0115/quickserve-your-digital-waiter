@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { SEO } from "@/components/SEO";
 import { cn } from "@/lib/utils";
 import { saveLastOrder, getLastOrder, clearLastOrder } from "@/lib/lastOrder";
+import { checkoutFormSchema, firstZodError } from "@/lib/validation";
 
 interface Business { id: string; name: string; slug: string; }
 interface Cat { id: string; name: string; display_order: number; }
@@ -88,7 +89,8 @@ export default function Menu() {
 
   const placeOrder = async () => {
     if (!business || cart.items.length === 0) return;
-    if (!checkout.name) return toast.error("Please enter your name");
+    const parsed = checkoutFormSchema.safeParse(checkout);
+    if (!parsed.success) return toast.error(firstZodError(parsed));
     setPlacing(true);
     try {
       // Prices/total are never sent from here — the create-order function
