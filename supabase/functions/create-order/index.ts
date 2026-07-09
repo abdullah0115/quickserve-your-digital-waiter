@@ -84,6 +84,25 @@ Deno.serve(async (req) => {
       return respond({ error: "Business not found or inactive" });
     }
 
+    // One active order per table at a time — check first for a friendly,
+    // specific message; the partial unique index on orders (see migration
+    // 20260710010000) is the atomic backstop that actually closes the race
+    // if two devices submit for the same table at the same instant.
+    if (body.table_number) {
+      const { data: existingOrder } = await supabase
+        .from("orders")
+        .select("token_number")
+        .eq("business_id", business.id)
+        .eq("table_number", body.table_number)
+        .in("status", ["pending", "preparing", "ready"])
+        .maybeSingle();
+      if (existingOrder) {
+        return respond({
+          error: `Table ${body.table_number} already has an active order (#${existingOrder.token_number}). Please wait for it to be completed before placing a new order.`,
+        });
+      }
+    }
+
     const itemIds = [...new Set(body.items.map((i) => i.menu_item_id))];
     const { data: menuItems, error: itemsErr } = await supabase
       .from("menu_items")
@@ -126,7 +145,16 @@ Deno.serve(async (req) => {
       })
       .select("id, token_number, total_amount")
       .single();
-    if (insertErr) throw insertErr;
+    if (insertErr) {
+      // 23505 = unique_violation — the two-devices-at-once race the
+      // pre-check above couldn't catch in time.
+      if (insertErr.code === "23505") {
+        return respond({
+          error: `Table ${body.table_number ?? ""} already has an active order in progress. Please wait for it to be completed before placing a new order.`,
+        });
+      }
+      throw insertErr;
+    }
 
     return respond({ data: order });
   } catch (err) {
