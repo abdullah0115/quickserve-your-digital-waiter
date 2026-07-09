@@ -29,10 +29,12 @@ export default function Menu() {
   const { slug } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const tableNumber = params.get("table");
+  const qrParam = params.get("qr");
   const orderType = params.get("type") === "takeaway" ? "takeaway" : "dine_in";
 
   const [business, setBusiness] = useState<Business | null>(null);
+  const [qrCodeId, setQrCodeId] = useState<string | null>(null);
+  const [tableNumber, setTableNumber] = useState<string | null>(null);
   const [cats, setCats] = useState<Cat[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [search, setSearch] = useState("");
@@ -62,6 +64,29 @@ export default function Menu() {
     })();
   }, [slug]);
 
+  // Resolve the table number server-side from the scanned QR code's id —
+  // never trust a table number typed straight into the URL. An invalid,
+  // inactive, or wrong-business qr id just means "no table" (browse/order
+  // still works, e.g. for takeaway), it doesn't block the page.
+  useEffect(() => {
+    if (!business || !qrParam) { setQrCodeId(null); setTableNumber(null); return; }
+    supabase
+      .from("qr_codes")
+      .select("id,table_number,is_active,business_id")
+      .eq("id", qrParam)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.is_active && data.business_id === business.id) {
+          setQrCodeId(data.id);
+          setTableNumber(data.table_number);
+        } else {
+          setQrCodeId(null);
+          setTableNumber(null);
+          toast.error("That QR code isn't valid — please scan the code at your table.");
+        }
+      });
+  }, [business, qrParam]);
+
   const filtered = useMemo(() => items.filter((it) => {
     if (selectedCat !== "all" && it.category_id !== selectedCat) return false;
     if (search && !it.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -83,7 +108,7 @@ export default function Menu() {
           customer_name: checkout.name,
           customer_phone: checkout.phone || undefined,
           items: cart.items.map((i) => ({ menu_item_id: i.id, quantity: i.quantity })),
-          table_number: tableNumber || undefined,
+          qr_code_id: qrCodeId || undefined,
           order_type: orderType,
           notes: checkout.notes || undefined,
         },

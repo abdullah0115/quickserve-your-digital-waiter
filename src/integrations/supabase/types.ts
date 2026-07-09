@@ -326,6 +326,7 @@ export type Database = {
           notes: string | null
           notified_at: string | null
           order_type: Database["public"]["Enums"]["order_type"]
+          qr_code_id: string | null
           status: Database["public"]["Enums"]["order_status"]
           table_number: string | null
           token_number: number
@@ -343,6 +344,7 @@ export type Database = {
           notes?: string | null
           notified_at?: string | null
           order_type?: Database["public"]["Enums"]["order_type"]
+          qr_code_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           table_number?: string | null
           token_number: number
@@ -360,6 +362,7 @@ export type Database = {
           notes?: string | null
           notified_at?: string | null
           order_type?: Database["public"]["Enums"]["order_type"]
+          qr_code_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           table_number?: string | null
           token_number?: number
@@ -372,6 +375,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_qr_code_id_fkey"
+            columns: ["qr_code_id"]
+            isOneToOne: false
+            referencedRelation: "qr_codes"
             referencedColumns: ["id"]
           },
         ]
@@ -537,6 +547,7 @@ export type Database = {
           items: Json
           total_amount: number
           table_number: string | null
+          qr_code_id: string | null
           order_type: Database["public"]["Enums"]["order_type"]
           created_at: string
           business_id: string
