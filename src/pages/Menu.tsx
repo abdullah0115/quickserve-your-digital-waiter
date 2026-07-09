@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ShoppingCart, Search, Plus, Minus, Trash2, Star, UtensilsCrossed, Loader2, Check } from "lucide-react";
+import { ArrowLeft, ShoppingCart, ClipboardList, Search, Plus, Minus, Trash2, Star, UtensilsCrossed, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart } from "@/store/cart";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { SEO } from "@/components/SEO";
 import { cn } from "@/lib/utils";
-import { saveLastOrder, getLastOrder, clearLastOrder } from "@/lib/lastOrder";
 import { checkoutFormSchema, firstZodError } from "@/lib/validation";
+import { addOrderToHistory } from "@/lib/orderHistory";
+import { useMyOrders, ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/useMyOrders";
 
 interface Business { id: string; name: string; slug: string; }
 interface Cat { id: string; name: string; display_order: number; }
@@ -21,13 +24,6 @@ interface Item {
   id: string; name: string; description: string | null; price: number;
   category_id: string | null; image_url: string | null; is_available: boolean; is_featured: boolean;
 }
-interface ActiveOrder { id: string; token_number: number; status: string; }
-
-const ACTIVE_ORDER_LABEL: Record<string, string> = {
-  pending: "Order Received",
-  preparing: "Being Prepared",
-  ready: "Ready for Pickup!",
-};
 
 export default function Menu() {
   const { slug } = useParams();
@@ -45,9 +41,11 @@ export default function Menu() {
   const [cartOpen, setCartOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [checkout, setCheckout] = useState({ name: "", phone: "", notes: "" });
-  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
 
   const cart = useCart();
+  const { orders: myOrders } = useMyOrders(slug);
+  const activeOrders = myOrders.filter((o) => ACTIVE_ORDER_STATUSES.has(o.status));
+  const latestActive = activeOrders[0];
 
   useEffect(() => {
     (async () => {
@@ -62,23 +60,6 @@ export default function Menu() {
       setItems((i.data ?? []) as unknown as Item[]);
       setLoading(false);
     })();
-  }, [slug]);
-
-  // If this browser placed an order at this business that isn't finished yet,
-  // show it right on the menu — so the customer doesn't have to dig up the link.
-  useEffect(() => {
-    const ref = getLastOrder(slug!);
-    if (!ref) return;
-    supabase.rpc("get_order_status", { p_business_slug: slug!, p_order_id: ref.id })
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data || data.status === "completed" || data.status === "cancelled") {
-          clearLastOrder(slug!);
-          setActiveOrder(null);
-        } else {
-          setActiveOrder({ id: data.id, token_number: data.token_number, status: data.status });
-        }
-      });
   }, [slug]);
 
   const filtered = useMemo(() => items.filter((it) => {
@@ -111,7 +92,7 @@ export default function Menu() {
       if (data?.error) throw new Error(data.error);
       const order = data.data as { id: string; token_number: number };
       cart.clear();
-      saveLastOrder(slug!, { id: order.id, tokenNumber: order.token_number });
+      addOrderToHistory(slug!, { id: order.id, tokenNumber: order.token_number });
       toast.success(`Order #${order.token_number} placed!`);
       navigate(`/${slug}/order/${order.token_number}?id=${order.id}`);
     } catch (err) {
@@ -131,17 +112,17 @@ export default function Menu() {
       <div className="min-h-screen bg-background pb-32">
         {/* Header */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b">
-          {activeOrder && (
+          {latestActive && (
             <div className="bg-accent text-accent-foreground">
               <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm">
                 <span className="font-medium">
-                  Order #{activeOrder.token_number} · {ACTIVE_ORDER_LABEL[activeOrder.status] ?? activeOrder.status}
+                  Order #{latestActive.tokenNumber} · {ORDER_STATUS_LABEL[latestActive.status] ?? latestActive.status}
                 </span>
                 <Button
                   size="sm"
                   variant="ghost"
                   className="h-7 px-2 text-accent-foreground hover:bg-accent-foreground/10"
-                  onClick={() => navigate(`/${slug}/order/${activeOrder.token_number}?id=${activeOrder.id}`)}
+                  onClick={() => navigate(`/${slug}/order/${latestActive.tokenNumber}?id=${latestActive.id}`)}
                 >
                   View status
                 </Button>
@@ -156,6 +137,41 @@ export default function Menu() {
                 <p className="text-xs text-muted-foreground">{orderType === "dine_in" ? `Table ${tableNumber ?? "—"}` : "Takeaway"}</p>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              {myOrders.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="icon" variant="outline" className="relative">
+                      <ClipboardList className="w-5 h-5" />
+                      {activeOrders.length > 0 && (
+                        <Badge className="absolute -top-2 -right-2 bg-accent text-accent-foreground h-5 w-5 p-0 flex items-center justify-center text-xs">
+                          {activeOrders.length}
+                        </Badge>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-72">
+                    <div className="px-3 py-2 border-b"><h3 className="font-semibold text-sm">Your Orders</h3></div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {myOrders.map((o) => (
+                        <DropdownMenuItem
+                          key={o.id}
+                          className="px-3 py-2.5 cursor-pointer flex-col items-start gap-0.5"
+                          onClick={() => navigate(`/${slug}/order/${o.tokenNumber}?id=${o.id}`)}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-medium text-sm">Order #{o.tokenNumber}</span>
+                            <span className="text-xs text-muted-foreground">{format(new Date(o.placedAt), "MMM d, h:mm a")}</span>
+                          </div>
+                          <span className={cn("text-xs", ACTIVE_ORDER_STATUSES.has(o.status) ? "text-accent font-medium" : "text-muted-foreground")}>
+                            {ORDER_STATUS_LABEL[o.status] ?? o.status}
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             <Sheet open={cartOpen} onOpenChange={setCartOpen}>
               <SheetTrigger asChild>
                 <Button size="icon" variant="outline" className="relative">
@@ -200,6 +216,7 @@ export default function Menu() {
                 )}
               </SheetContent>
             </Sheet>
+            </div>
           </div>
           {/* Search */}
           <div className="container mx-auto px-4 pb-3">
