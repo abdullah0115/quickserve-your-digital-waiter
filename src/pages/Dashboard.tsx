@@ -24,6 +24,7 @@ import { SEO } from "@/components/SEO";
 import { NotificationBell } from "@/components/NotificationBell";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { businessSettingsSchema, menuItemFormSchema, qrCodeFormSchema, firstZodError } from "@/lib/validation";
 
 interface Business { id: string; name: string; slug: string; }
 interface Category { id: string; name: string; display_order: number; }
@@ -389,7 +390,8 @@ function MenuManager({ business }: { business: Business }) {
   };
 
   const saveItem = async () => {
-    if (!form.name || !form.price) return toast.error("Name and price are required");
+    const parsed = menuItemFormSchema.safeParse(form);
+    if (!parsed.success) return toast.error(firstZodError(parsed));
     const payload = {
       business_id: business.id, name: form.name, description: form.description || null,
       price: Number(form.price), category_id: form.category_id || null,
@@ -531,7 +533,8 @@ function QrManager({ business }: { business: Business }) {
   useEffect(() => { load(); }, [load]);
 
   const add = async () => {
-    if (!tableNum) return toast.error("Enter table number");
+    const parsed = qrCodeFormSchema.safeParse({ table_number: tableNum, label });
+    if (!parsed.success) return toast.error(firstZodError(parsed));
     const { error } = await supabase.from("qr_codes").insert({
       business_id: business.id, table_number: tableNum, label: label || `Table ${tableNum}`,
     });
@@ -650,6 +653,8 @@ function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (
   }, [business.id]);
 
   const save = async () => {
+    const parsed = businessSettingsSchema.safeParse(form);
+    if (!parsed.success) return toast.error(firstZodError(parsed));
     const { error } = await supabase.from("businesses").update(form).eq("id", business.id);
     if (error) toast.error(error.message);
     else { toast.success("Saved"); onUpdate({ ...business, name: form.name }); }
