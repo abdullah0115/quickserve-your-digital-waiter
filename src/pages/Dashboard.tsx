@@ -551,6 +551,9 @@ function QrManager({ business }: { business: Business }) {
         <h1 className="font-display text-3xl font-bold">QR Codes</h1>
         <p className="text-muted-foreground mt-1">Print & place on tables. Customers scan to order.</p>
       </div>
+      <Card className="mb-6 border-accent/40 bg-accent/5"><CardContent className="p-4 text-sm text-muted-foreground">
+        If you printed QR codes before today, please reprint them from here — orders are now matched to a table by scanning the code itself (not a typed-in number), so old codes will open the menu but won't attach to a table anymore.
+      </CardContent></Card>
       <Card className="mb-6"><CardContent className="p-5">
         <div className="grid sm:grid-cols-3 gap-3">
           <Input placeholder="Table number (e.g. 1)" value={tableNum} onChange={(e) => setTableNum(e.target.value)} />
