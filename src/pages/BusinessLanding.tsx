@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import { ArrowRight, MapPin, Phone, Mail, UtensilsCrossed, Star, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { SEO } from "@/components/SEO";
@@ -23,7 +22,6 @@ export default function BusinessLanding() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [featured, setFeatured] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tableNumber, setTableNumber] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -104,13 +102,21 @@ export default function BusinessLanding() {
                     <TabsTrigger value="take">Takeaway</TabsTrigger>
                   </TabsList>
                   <TabsContent value="dine" className="space-y-3">
-                    <Input placeholder="Enter your table number" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="text-center text-lg h-12" />
+                    {/* Table numbers are only ever attached to an order by
+                        scanning the QR code on that table (verified
+                        server-side) — a manual "type your table number"
+                        field here would just be a way to claim any table
+                        without proving you're there, so it isn't offered. */}
+                    <p className="text-sm text-muted-foreground text-center">
+                      Scan the QR code on your table to start a dine-in order.
+                    </p>
                     <Button
-                      onClick={() => navigate(`/${slug}/menu?table=${encodeURIComponent(tableNumber || "1")}`)}
-                      className="w-full bg-primary hover:bg-primary-hover text-primary-foreground h-12"
+                      onClick={() => navigate(`/${slug}/menu`)}
+                      variant="outline"
+                      className="w-full h-12"
                       size="lg"
                     >
-                      View Menu <ArrowRight className="ml-2 w-4 h-4" />
+                      Browse Menu Without a Table <ArrowRight className="ml-2 w-4 h-4" />
                     </Button>
                   </TabsContent>
                   <TabsContent value="take">
