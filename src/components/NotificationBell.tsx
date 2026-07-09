@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Bell } from 'lucide-react'
 import { Button } from './ui/button'
 import { useNotifications } from '@/hooks/useNotifications'
@@ -10,10 +11,24 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 import { format } from 'date-fns'
+import { unlockNotificationAudio } from '@/lib/notificationSound'
 
 export function NotificationBell() {
   const { businessId } = useAuth()
   const { notifications, unreadCount, markAsRead } = useNotifications(undefined, businessId ?? undefined)
+
+  // Browsers block audio until there's been a real user gesture on the page.
+  // Unlock it on the first click/keypress so it's already running by the
+  // time a realtime notification tries to play a sound of its own accord.
+  useEffect(() => {
+    const unlock = () => unlockNotificationAudio()
+    document.addEventListener('pointerdown', unlock, { once: true })
+    document.addEventListener('keydown', unlock, { once: true })
+    return () => {
+      document.removeEventListener('pointerdown', unlock)
+      document.removeEventListener('keydown', unlock)
+    }
+  }, [])
 
   return (
     <DropdownMenu>
