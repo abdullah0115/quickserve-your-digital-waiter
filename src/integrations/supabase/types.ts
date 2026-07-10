@@ -553,6 +553,34 @@ export type Database = {
           business_id: string
         }[]
       }
+      admin_list_businesses: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          name: string
+          slug: string
+          owner_email: string
+          subscription_status: Database["public"]["Enums"]["subscription_status"]
+          subscription_plan_name: string | null
+          trial_ends_at: string | null
+          current_period_end: string | null
+          is_active: boolean
+          created_at: string
+        }[]
+      }
+      admin_set_subscription: {
+        Args: {
+          p_business_id: string
+          p_status: Database["public"]["Enums"]["subscription_status"]
+          p_trial_ends_at?: string
+          p_current_period_end?: string
+        }
+        Returns: undefined
+      }
+      admin_set_business_active: {
+        Args: { p_business_id: string; p_is_active: boolean }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "owner" | "staff"

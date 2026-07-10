@@ -68,6 +68,7 @@ export function useAuth() {
   const businessId = roles.find((r) => r.business_id)?.business_id ?? null
   const isOwner = roles.some((r) => r.role === 'owner')
   const isStaff = roles.some((r) => r.role === 'staff')
+  const isAdmin = roles.some((r) => r.role === 'admin')
 
   // There's no granular per-permission system yet — owners and staff both
   // get full dashboard access at the RLS layer (see user_roles / is_business_member
@@ -92,6 +93,7 @@ export function useAuth() {
     canChangeOrderStatus,
     isOwner,
     isStaff,
+    isAdmin,
     signOut,
   }
 }

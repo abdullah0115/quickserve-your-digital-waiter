@@ -7,6 +7,7 @@ const Pricing = lazy(() => import("./pages/Pricing"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const BusinessLanding = lazy(() => import("./pages/BusinessLanding"));
 const Menu = lazy(() => import("./pages/Menu"));
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/dashboard/*" element={<Dashboard />} />
+        <Route path="/admin" element={<AdminPanel />} />
         <Route path="/:slug" element={<BusinessLanding />} />
         <Route path="/:slug/menu" element={<Menu />} />
         <Route path="/:slug/order/:token" element={<OrderStatus />} />
