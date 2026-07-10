@@ -8,7 +8,7 @@ import { SEO } from "@/components/SEO";
 import { Badge } from "@/components/ui/badge";
 
 interface Order {
-  id: string; token_number: number; status: string; customer_name: string;
+  id: string; token_number: number; status: string;
   items: Array<{ name: string; quantity: number }>; created_at: string;
 }
 interface Business { id: string; name: string; }
@@ -20,8 +20,12 @@ export default function DisplayScreen() {
   const [now, setNow] = useState(new Date());
   const [loading, setLoading] = useState(true);
 
+  // customer_name isn't selected here — it's revoked from the anon role
+  // (this screen runs unauthenticated on a public display) since it's
+  // real PII with no reason to be visible outside the business's own
+  // staff. The token number is what customers actually watch for.
   const load = useCallback(async (bizId: string) => {
-    const { data } = await supabase.from("orders").select("id,token_number,status,customer_name,items,created_at")
+    const { data } = await supabase.from("orders").select("id,token_number,status,items,created_at")
       .eq("business_id", bizId)
       .in("status", ["preparing", "ready"])
       .order("created_at", { ascending: true });
@@ -112,7 +116,6 @@ export default function DisplayScreen() {
                           <Bell className="w-10 h-10 text-secondary-foreground" />
                         </motion.div>
                       </div>
-                      {o.customer_name && <p className="text-secondary-foreground text-lg font-semibold mt-1">{o.customer_name}</p>}
                     </motion.div>
                   ))}
                 </AnimatePresence>
