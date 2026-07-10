@@ -7,7 +7,12 @@ project_id = "hkxewwtanrfjrmsarhym"
 # future push will silently reset it back to a CLI default.
 [auth]
 site_url = "http://localhost:3000"
-additional_redirect_urls = []
+# Without this, Supabase rejects any redirectTo that isn't exactly
+# site_url and silently falls back to it — which is why the password
+# recovery link was landing on the bare homepage (still establishing a
+# session there, since the client picks up the recovery token on
+# whatever page it lands on) instead of /auth/reset-password.
+additional_redirect_urls = ["http://localhost:3000/**"]
 
 [auth.email]
 enable_confirmations = true

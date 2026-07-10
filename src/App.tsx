@@ -1,6 +1,7 @@
-import { Routes, Route } from "react-router-dom";
-import { lazy, Suspense } from "react";
+import { Routes, Route, useNavigate } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
 import { Loader2 } from "lucide-react";
+import { supabase } from "./integrations/supabase/client";
 
 const Home = lazy(() => import("./pages/Home"));
 const Pricing = lazy(() => import("./pages/Pricing"));
@@ -27,6 +28,20 @@ function PageLoader() {
 }
 
 export default function App() {
+  const navigate = useNavigate();
+
+  // Supabase's own `redirectTo` for password-recovery links isn't reliably
+  // honored (it can silently fall back to the bare site URL instead of
+  // /auth/reset-password) — so instead of depending on that, catch the
+  // PASSWORD_RECOVERY event globally, no matter which page the recovery
+  // link happened to land the browser on, and route from here.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") navigate("/auth/reset-password", { replace: true });
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [navigate]);
+
   return (
     <Suspense fallback={<PageLoader />}>
       <OfflineIndicator />
