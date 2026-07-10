@@ -1,1 +1,33 @@
 project_id = "hkxewwtanrfjrmsarhym"
+
+# NOTE: `supabase config push` replaces any [auth]-section field this file
+# doesn't mention with the CLI's own schema default — it does not merge
+# with whatever's live. So every field that was already live and matters
+# has to stay explicitly listed here, not just the new SMTP block, or a
+# future push will silently reset it back to a CLI default.
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = []
+
+[auth.email]
+enable_confirmations = true
+max_frequency = "1m0s"
+otp_length = 8
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+# Custom SMTP so auth emails (password reset, signup confirmation) send
+# reliably instead of through Supabase's default mailer, which has a very
+# low sending rate limit meant only for testing. `pass` is read from the
+# local environment at `supabase config push` time — never written to
+# this file — so the App Password itself never touches git.
+[auth.email.smtp]
+enabled = true
+host = "smtp.gmail.com"
+port = 587
+user = "QuickWaiterz@gmail.com"
+pass = "env(SMTP_PASSWORD)"
+admin_email = "QuickWaiterz@gmail.com"
+sender_name = "QuickServe"
