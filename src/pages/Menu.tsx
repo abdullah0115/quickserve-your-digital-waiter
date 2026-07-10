@@ -70,10 +70,11 @@ export default function Menu() {
   // still works, e.g. for takeaway), it doesn't block the page.
   useEffect(() => {
     if (!business || !qrParam) { setQrCodeId(null); setTableNumber(null); return; }
+    // Point lookup via RPC, not a raw table query — qr_codes has no public
+    // SELECT policy, so this is the only way to resolve a single scanned
+    // id without it also being possible to list every table's QR id.
     supabase
-      .from("qr_codes")
-      .select("id,table_number,is_active,business_id")
-      .eq("id", qrParam)
+      .rpc("resolve_qr_code", { p_qr_id: qrParam })
       .maybeSingle()
       .then(({ data }) => {
         if (data && data.is_active && data.business_id === business.id) {

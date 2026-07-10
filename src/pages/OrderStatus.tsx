@@ -70,33 +70,45 @@ export default function OrderStatus() {
     })();
   }, [slug, orderId]);
 
+  // Polls get_order_status instead of subscribing to postgres_changes —
+  // orders has no public SELECT policy (a guest customer must never be
+  // able to list other tables'/businesses' orders), and Realtime honors
+  // the same RLS as a regular SELECT, so a table-level subscription isn't
+  // available here. The RPC is a point lookup by this order's own id,
+  // which the customer already had to know to be on this page at all.
   useEffect(() => {
-    if (!order) return;
-    const ch = supabase.channel(`order-${order.id}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${order.id}` },
-        (p) => {
-          const prevStatus = (p.old as Partial<Order> | null)?.status;
-          const next = p.new as Partial<Order>;
-          setOrder((prev) => (prev ? { ...prev, ...next } : prev));
-          if (next.status && next.status !== prevStatus) {
-            updateOrderHistoryStatus(slug!, order.id, next.status);
-            const label = ORDER_STATUS_LABEL[next.status] ?? next.status;
-            toast.info(`Order #${order.token_number} — ${label}`);
-            playNotificationSound();
-            if ("Notification" in window && Notification.permission === "granted") {
-              new Notification(`Order #${order.token_number} — ${label}`, {
-                body: next.status === "ready" ? "Please collect from the counter" : undefined,
-                icon: "/pwa-192x192.png",
-              });
-            }
+    if (!order?.id || !slug) return;
+    if (!ACTIVE_ORDER_STATUSES.has(order.status)) return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .rpc("get_order_status", { p_business_slug: slug, p_order_id: order.id })
+        .maybeSingle();
+      if (cancelled || !data) return;
+      const next = data as unknown as Partial<Order>;
+      setOrder((prev) => {
+        if (!prev) return prev;
+        if (next.status && next.status !== prev.status) {
+          updateOrderHistoryStatus(slug, prev.id, next.status);
+          const label = ORDER_STATUS_LABEL[next.status] ?? next.status;
+          toast.info(`Order #${prev.token_number} — ${label}`);
+          playNotificationSound();
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(`Order #${prev.token_number} — ${label}`, {
+              body: next.status === "ready" ? "Please collect from the counter" : undefined,
+              icon: "/pwa-192x192.png",
+            });
           }
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-    // Resubscribing only on id change (not every status tick) avoids
-    // tearing down and rejoining the channel on each realtime event.
+        }
+        return { ...prev, ...next };
+      });
+      if (next.status && !ACTIVE_ORDER_STATUSES.has(next.status)) clearInterval(interval);
+    }, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+    // Only re-run on id/slug change (not every status tick) — the interval
+    // clears itself once a terminal status is reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order?.id]);
+  }, [order?.id, slug]);
 
   // Audio and the native notification prompt both need a real user gesture
   // first — ask for both on the first tap/keypress so status changes can

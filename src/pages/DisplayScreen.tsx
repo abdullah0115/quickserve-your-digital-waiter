@@ -24,11 +24,13 @@ export default function DisplayScreen() {
   // (this screen runs unauthenticated on a public display) since it's
   // real PII with no reason to be visible outside the business's own
   // staff. The token number is what customers actually watch for.
-  const load = useCallback(async (bizId: string) => {
-    const { data } = await supabase.from("orders").select("id,token_number,status,items,created_at")
-      .eq("business_id", bizId)
-      .in("status", ["preparing", "ready"])
-      .order("created_at", { ascending: true });
+  //
+  // Goes through a SECURITY DEFINER RPC scoped by business slug rather
+  // than a raw table query — orders has no public SELECT policy (that
+  // would otherwise let anyone list every active order across every
+  // business on the platform, not just this one's).
+  const load = useCallback(async (bizSlug: string) => {
+    const { data } = await supabase.rpc("get_active_orders_for_display", { p_business_slug: bizSlug });
     if (data) setOrders(data as unknown as Order[]);
   }, []);
 
@@ -37,20 +39,21 @@ export default function DisplayScreen() {
       const { data: biz } = await supabase.from("businesses").select("id,name").eq("slug", slug!).maybeSingle();
       if (!biz) { setLoading(false); return; }
       setBusiness(biz as Business);
-      await load(biz.id);
+      await load(slug!);
       setLoading(false);
     })();
   }, [slug, load]);
 
+  // Polls instead of a postgres_changes subscription, for the same RLS
+  // reason as above — realtime is gated by the same policy a regular
+  // SELECT would need, which this table intentionally no longer grants
+  // to anon at large.
   useEffect(() => {
-    if (!business) return;
-    const ch = supabase.channel(`display-${business.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `business_id=eq.${business.id}` },
-        () => load(business.id))
-      .subscribe();
+    if (!business || !slug) return;
+    const poll = setInterval(() => load(slug), 5000);
     const t = setInterval(() => setNow(new Date()), 30000);
-    return () => { supabase.removeChannel(ch); clearInterval(t); };
-  }, [business, load]);
+    return () => { clearInterval(poll); clearInterval(t); };
+  }, [business, slug, load]);
 
   if (loading) return <div className="min-h-screen bg-primary flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
   if (!business) return <div className="min-h-screen bg-primary flex items-center justify-center text-primary-foreground">Business not found</div>;
