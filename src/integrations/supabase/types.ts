@@ -553,6 +553,29 @@ export type Database = {
           business_id: string
         }[]
       }
+      resolve_qr_code: {
+        Args: {
+          p_qr_id: string
+        }
+        Returns: {
+          id: string
+          business_id: string
+          table_number: string
+          is_active: boolean
+        }[]
+      }
+      get_active_orders_for_display: {
+        Args: {
+          p_business_slug: string
+        }
+        Returns: {
+          id: string
+          token_number: number
+          status: Database["public"]["Enums"]["order_status"]
+          items: Json
+          created_at: string
+        }[]
+      }
       admin_list_businesses: {
         Args: Record<PropertyKey, never>
         Returns: {

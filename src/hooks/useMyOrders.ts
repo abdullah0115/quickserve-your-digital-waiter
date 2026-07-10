@@ -55,6 +55,7 @@ export function useMyOrders(slug: string | undefined) {
     results.forEach(({ data }, i) => {
       const h = history[i];
       if (data) {
+        if (data.status !== h.status) notifyStatusChange(h.tokenNumber, data.status);
         updateOrderHistoryStatus(slug, h.id, data.status);
         fresh.push({ ...h, status: data.status });
       } else {
@@ -94,35 +95,17 @@ export function useMyOrders(slug: string | undefined) {
     .map((o) => o.id)
     .join(",");
 
+  // Polls instead of subscribing to postgres_changes — orders has no
+  // public SELECT policy (a guest browser must never be able to list
+  // other customers'/tables' orders), and Realtime is RLS-gated the same
+  // as a regular SELECT, so a raw table subscription isn't available
+  // here. refresh() already does a point lookup per tracked order id via
+  // the get_order_status RPC and now also notifies on a status change.
   useEffect(() => {
     if (!slug || !activeIds) return;
-    const ids = activeIds.split(",");
-    const channels = ids.map((id) => {
-      const entry = orders.find((o) => o.id === id);
-      return supabase
-        .channel(`my-order-${id}`)
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${id}` },
-          (payload) => {
-            const row = payload.new as { status: string; token_number: number };
-            updateOrderHistoryStatus(slug, id, row.status);
-            setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: row.status } : o)));
-            if (entry && row.status !== entry.status) {
-              notifyStatusChange(row.token_number, row.status);
-            }
-          }
-        )
-        .subscribe();
-    });
-    return () => {
-      channels.forEach((c) => supabase.removeChannel(c));
-    };
-    // orders is intentionally excluded — activeIds already captures the set
-    // of ids that matters, and re-subscribing on every status tick would
-    // just churn the same channels.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIds, slug]);
+    const interval = setInterval(refresh, 6000);
+    return () => clearInterval(interval);
+  }, [activeIds, slug, refresh]);
 
   return { orders, refresh };
 }
