@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Coffee, LayoutDashboard, UtensilsCrossed, ClipboardList, QrCode as QrIcon,
   BarChart3, Settings, LogOut, Plus, Loader2, ChefHat, Bell, CheckCircle, Clock,
-  Trash2, ExternalLink, Eye, Monitor, TrendingUp,
+  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,7 @@ const NAV = [
 ];
 
 export default function Dashboard() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, isAdmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [business, setBusiness] = useState<Business | null>(null);
   const [tab, setTab] = useState("overview");
@@ -140,6 +140,11 @@ export default function Dashboard() {
             ))}
           </nav>
           <div className="p-3 border-t space-y-1">
+            {isAdmin && (
+              <a href="/admin" className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted">
+                <ShieldCheck className="w-4 h-4" /> Admin
+              </a>
+            )}
             <a href={`/${business.slug}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted">
               <ExternalLink className="w-4 h-4" /> View public page
             </a>
