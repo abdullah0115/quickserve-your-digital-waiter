@@ -12,10 +12,24 @@ import { SEO } from "@/components/SEO";
 export default function Auth() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"signin" | "signup">(params.get("mode") === "signup" ? "signup" : "signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">(params.get("mode") === "signup" ? "signup" : "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    // Always show the same success state whether or not the email is
+    // actually registered — confirming/denying an account's existence
+    // here would let anyone probe for valid signup emails.
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    });
+    setResetSent(true);
+    setLoading(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +65,7 @@ export default function Auth() {
 
   return (
     <>
-      <SEO title={`${mode === "signup" ? "Sign up" : "Sign in"} — QuickServe`} description="Sign in to your QuickServe account." noIndex />
+      <SEO title={`${mode === "signup" ? "Sign up" : mode === "forgot" ? "Reset password" : "Sign in"} — QuickServe`} description="Sign in to your QuickServe account." noIndex />
       <div className="min-h-screen bg-gradient-hero flex items-center justify-center px-4 pattern-warm">
         <div className="w-full max-w-md">
           <Link to="/" className="inline-flex items-center gap-2 mb-8 text-sm text-muted-foreground hover:text-foreground">
@@ -65,36 +79,83 @@ export default function Auth() {
                 </div>
                 <span className="font-display text-xl font-bold">QuickServe</span>
               </div>
-              <h1 className="font-display text-3xl font-bold mb-1">
-                {mode === "signup" ? "Start your free trial" : "Welcome back"}
-              </h1>
-              <p className="text-muted-foreground text-sm mb-8">
-                {mode === "signup" ? "14 days free. No credit card required." : "Sign in to your dashboard."}
-              </p>
+              {mode === "forgot" ? (
+                <>
+                  <h1 className="font-display text-3xl font-bold mb-1">Reset your password</h1>
+                  <p className="text-muted-foreground text-sm mb-8">
+                    Enter your email and we'll send you a link to set a new password.
+                  </p>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@cafe.com" className="mt-1.5" />
-                </div>
-                <div>
-                  <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="mt-1.5" />
-                </div>
-                <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary-hover text-primary-foreground h-11">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === "signup" ? "Create Account" : "Sign In"}
-                </Button>
-              </form>
+                  {resetSent ? (
+                    <div className="text-sm bg-secondary/10 text-secondary rounded-lg p-4">
+                      If an account exists for that email, a reset link is on its way — check your inbox.
+                    </div>
+                  ) : (
+                    <form onSubmit={handleForgotPassword} className="space-y-4">
+                      <div>
+                        <Label htmlFor="email">Email</Label>
+                        <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@cafe.com" className="mt-1.5" />
+                      </div>
+                      <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary-hover text-primary-foreground h-11">
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send reset link"}
+                      </Button>
+                    </form>
+                  )}
 
-              <div className="mt-6 text-center text-sm text-muted-foreground">
-                {mode === "signup" ? "Already have an account? " : "Don't have an account? "}
-                <button
-                  onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
-                  className="text-secondary font-semibold hover:underline"
-                >
-                  {mode === "signup" ? "Sign in" : "Sign up free"}
-                </button>
-              </div>
+                  <div className="mt-6 text-center text-sm text-muted-foreground">
+                    <button
+                      onClick={() => { setMode("signin"); setResetSent(false); }}
+                      className="text-secondary font-semibold hover:underline"
+                    >
+                      Back to sign in
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h1 className="font-display text-3xl font-bold mb-1">
+                    {mode === "signup" ? "Start your free trial" : "Welcome back"}
+                  </h1>
+                  <p className="text-muted-foreground text-sm mb-8">
+                    {mode === "signup" ? "14 days free. No credit card required." : "Sign in to your dashboard."}
+                  </p>
+
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                      <Label htmlFor="email">Email</Label>
+                      <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@cafe.com" className="mt-1.5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="password">Password</Label>
+                        {mode === "signin" && (
+                          <button
+                            type="button"
+                            onClick={() => setMode("forgot")}
+                            className="text-xs text-secondary hover:underline"
+                          >
+                            Forgot password?
+                          </button>
+                        )}
+                      </div>
+                      <Input id="password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="mt-1.5" />
+                    </div>
+                    <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary-hover text-primary-foreground h-11">
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === "signup" ? "Create Account" : "Sign In"}
+                    </Button>
+                  </form>
+
+                  <div className="mt-6 text-center text-sm text-muted-foreground">
+                    {mode === "signup" ? "Already have an account? " : "Don't have an account? "}
+                    <button
+                      onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
+                      className="text-secondary font-semibold hover:underline"
+                    >
+                      {mode === "signup" ? "Sign in" : "Sign up free"}
+                    </button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
