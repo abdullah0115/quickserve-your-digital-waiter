@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Coffee, LayoutDashboard, UtensilsCrossed, ClipboardList, QrCode as QrIcon,
   BarChart3, Settings, LogOut, Plus, Loader2, ChefHat, Bell, CheckCircle, Clock,
-  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck,
+  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck, Printer,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { QrPrintDialog } from "@/components/qr-print/QrPrintDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -106,9 +107,6 @@ export default function Dashboard() {
     <>
       <SEO title={`Dashboard — ${business.name}`} description="Manage your business" noIndex />
       <div className="min-h-screen bg-muted/30 flex">
-        <div className="fixed top-4 right-4 z-50">
-          <NotificationBell />
-        </div>
         {/* Sidebar */}
         <aside className="hidden lg:flex w-64 bg-card border-r flex-col">
           <div className="p-6 border-b">
@@ -156,9 +154,12 @@ export default function Dashboard() {
 
         {/* Main */}
         <main className="flex-1 overflow-auto">
-          {/* Mobile tabs */}
-          <div className="lg:hidden bg-card border-b p-3 sticky top-0 z-10 flex items-center gap-2">
-            <div className="flex-1 min-w-0">
+          {/* Top bar — tab select only shows on mobile (sidebar covers it on
+              desktop), but this single bar (and the one NotificationBell
+              inside it) is always mounted, so the bell never double-mounts
+              and its realtime subscription never collides with itself. */}
+          <div className="bg-card border-b p-3 sticky top-0 z-10 flex items-center gap-2">
+            <div className="flex-1 min-w-0 lg:hidden">
               <Select value={tab} onValueChange={setTab}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -170,6 +171,8 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex-1 hidden lg:block" />
+            <NotificationBell />
           </div>
 
           <div className="p-6 lg:p-10 max-w-7xl mx-auto">
@@ -530,6 +533,7 @@ function QrManager({ business }: { business: Business }) {
   const [codes, setCodes] = useState<QrCode[]>([]);
   const [tableNum, setTableNum] = useState("");
   const [label, setLabel] = useState("");
+  const [printTarget, setPrintTarget] = useState<QrCode | null>(null);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("qr_codes").select("*").eq("business_id", business.id);
@@ -556,8 +560,25 @@ function QrManager({ business }: { business: Business }) {
         <h1 className="font-display text-3xl font-bold">QR Codes</h1>
         <p className="text-muted-foreground mt-1">Print & place on tables. Customers scan to order.</p>
       </div>
-      <Card className="mb-6 border-accent/40 bg-accent/5"><CardContent className="p-4 text-sm text-muted-foreground">
-        If you printed QR codes before today, please reprint them from here — orders are now matched to a table by scanning the code itself (not a typed-in number), so old codes will open the menu but won't attach to a table anymore.
+      <Card className="mb-6 border-accent/40 bg-accent/5"><CardContent className="p-5 text-sm">
+        <div className="grid sm:grid-cols-2 gap-5">
+          <div>
+            <div className="font-semibold mb-2">How to generate &amp; print</div>
+            <ol className="space-y-1.5 text-muted-foreground list-decimal list-inside">
+              <li>Enter a table number below and click <span className="text-foreground font-medium">Create</span>.</li>
+              <li>Click <span className="text-foreground font-medium">Print</span> on that table's card and pick a style.</li>
+              <li>Download as PNG or PDF and print it — place it on the table. No design tool needed.</li>
+            </ol>
+          </div>
+          <div>
+            <div className="font-semibold mb-2 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-secondary" /> How secure is it</div>
+            <ul className="space-y-1.5 text-muted-foreground list-disc list-inside">
+              <li>Each QR code is a random, unguessable link — not a typed table number, so no one can order for a different table by editing the URL.</li>
+              <li>The table is verified on our server every time an order is placed, never trusted from the customer's browser.</li>
+              <li>Only one active order is allowed per table at a time, so two customers can't order for the same table simultaneously.</li>
+            </ul>
+          </div>
+        </div>
       </CardContent></Card>
       <Card className="mb-6"><CardContent className="p-5">
         <div className="grid sm:grid-cols-3 gap-3">
@@ -580,7 +601,12 @@ function QrManager({ business }: { business: Business }) {
               </div>
               <div className="font-semibold">{q.label}</div>
               <div className="text-xs text-muted-foreground mb-3 truncate">{url}</div>
-              <Button size="sm" variant="ghost" onClick={() => remove(q.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+              <div className="flex items-center justify-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => setPrintTarget(q)}>
+                  <Printer className="w-4 h-4 mr-1" /> Print
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => remove(q.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+              </div>
             </CardContent></Card>
           );
         })}
@@ -591,6 +617,15 @@ function QrManager({ business }: { business: Business }) {
           </CardContent></Card>
         )}
       </div>
+      {printTarget && (
+        <QrPrintDialog
+          open={!!printTarget}
+          onOpenChange={(o) => !o && setPrintTarget(null)}
+          businessName={business.name}
+          tableLabel={printTarget.table_number}
+          qrUrl={`${window.location.origin}/${business.slug}/menu?qr=${printTarget.id}`}
+        />
+      )}
     </div>
   );
 }
