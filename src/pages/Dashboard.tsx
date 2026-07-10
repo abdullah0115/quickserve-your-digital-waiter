@@ -4,10 +4,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Coffee, LayoutDashboard, UtensilsCrossed, ClipboardList, QrCode as QrIcon,
   BarChart3, Settings, LogOut, Plus, Loader2, ChefHat, Bell, CheckCircle, Clock,
-  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck, Printer,
+  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck, Printer, ScanLine,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { QrPrintDialog } from "@/components/qr-print/QrPrintDialog";
+import { ScanMenuDialog } from "@/components/menu-scanner/ScanMenuDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -372,6 +373,7 @@ function MenuManager({ business }: { business: Business }) {
   const [editing, setEditing] = useState<MenuItem | null>(null);
   const [form, setForm] = useState({ name: "", description: "", price: "", category_id: "", is_featured: false, image_url: "" });
   const [newCat, setNewCat] = useState("");
+  const [showScan, setShowScan] = useState(false);
 
   const load = useCallback(async () => {
     const [c, i] = await Promise.all([
@@ -438,8 +440,21 @@ function MenuManager({ business }: { business: Business }) {
           <h1 className="font-display text-3xl font-bold">Menu</h1>
           <p className="text-muted-foreground mt-1">{items.length} items in {categories.length} categories</p>
         </div>
-        <Button onClick={openNew} className="bg-primary text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add Item</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowScan(true)}><ScanLine className="w-4 h-4 mr-1" /> Scan Menu</Button>
+          <Button onClick={openNew} className="bg-primary text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add Item</Button>
+        </div>
       </div>
+
+      <ScanMenuDialog
+        open={showScan}
+        onOpenChange={setShowScan}
+        businessId={business.id}
+        categories={categories}
+        categoryCount={categories.length}
+        onImported={load}
+        onManualFallback={openNew}
+      />
 
       <Tabs defaultValue="items">
         <TabsList>
