@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, QrCode, Monitor, Smartphone, BarChart3, Zap, Lock, Play, Check, Sparkles } from "lucide-react";
+import { ArrowRight, QrCode, Monitor, Smartphone, BarChart3, Zap, Lock, Play, Check, Sparkles, ShieldCheck, KeyRound, Database, Radar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SEO } from "@/components/SEO";
 import { MarketingNav, MarketingFooter } from "@/components/marketing/MarketingShell";
@@ -15,6 +15,29 @@ const features = [
   { icon: BarChart3, title: "Sales Analytics", description: "Track daily revenue, bestsellers, and peak hours. Grow your business with data." },
   { icon: Zap, title: "Lightning Fast", description: "Orders appear instantly. Updates in real-time. Built for high-traffic rushes." },
   { icon: Lock, title: "Secure & Reliable", description: "Enterprise-grade security. 99.9% uptime guaranteed. Your data is always safe." },
+];
+
+const securityPoints = [
+  {
+    icon: QrCode,
+    title: "Tables can't be spoofed",
+    description: "Each table's QR code is a random, unguessable link. The table a customer is ordering for is always verified on our server — never taken from what a browser claims.",
+  },
+  {
+    icon: Database,
+    title: "Your data stays yours",
+    description: "Every business's menu, orders, and customer details are isolated at the database level. No other business — and no customer — can ever read or change data that isn't theirs.",
+  },
+  {
+    icon: KeyRound,
+    title: "Prices set your side, always",
+    description: "Order totals are recalculated from your live menu on our server for every single order. A tampered request from a customer's device can never change what they're charged.",
+  },
+  {
+    icon: Radar,
+    title: "No double-booked tables",
+    description: "Only one active order per table at a time — enforced atomically at the database level, not just checked in the app, so it holds even if two orders land at the exact same instant.",
+  },
 ];
 
 export default function Home() {
@@ -198,6 +221,42 @@ export default function Home() {
                 Get Started Free <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
             </motion.div>
+          </div>
+        </section>
+
+        {/* SECURITY */}
+        <section id="security" className="py-20 lg:py-28">
+          <div className="container mx-auto px-4 lg:px-8">
+            <div className="text-center max-w-2xl mx-auto mb-16">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 text-secondary text-xs font-medium mb-4">
+                <ShieldCheck className="w-3.5 h-3.5" /> TRUST &amp; SECURITY
+              </div>
+              <h2 className="font-display text-4xl md:text-5xl font-bold text-balance">
+                Security isn't an afterthought
+              </h2>
+              <p className="mt-4 text-lg text-muted-foreground">
+                Every order that flows through QuickWaiters is verified server-side — here's exactly what that means for you and your customers.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {securityPoints.map((s, i) => (
+                <motion.div
+                  key={s.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.05 }}
+                  className="p-6 rounded-2xl bg-card border border-secondary/20 hover:shadow-warm transition-all"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-secondary/10 flex items-center justify-center mb-4">
+                    <s.icon className="w-5 h-5 text-secondary" />
+                  </div>
+                  <h3 className="font-display text-base font-semibold mb-2">{s.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{s.description}</p>
+                </motion.div>
+              ))}
+            </div>
           </div>
         </section>
 
