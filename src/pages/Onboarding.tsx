@@ -37,13 +37,6 @@ export default function Onboarding() {
     setLoading(true);
     try {
       const baseSlug = slugify(name);
-      // Get free plan
-      const { data: plan } = await supabase
-        .from("subscription_plans")
-        .select("id")
-        .eq("slug", "free")
-        .single();
-
       // Try slug; on conflict append random suffix
       let slug = baseSlug;
       let attempts = 0;
@@ -65,8 +58,10 @@ export default function Onboarding() {
           cuisine_type: cuisine,
           phone,
           email: user.email,
-          subscription_plan_id: plan?.id ?? null,
-          subscription_status: "trial",
+          // subscription_plan_id / subscription_status are never sent from
+          // here — a DB trigger assigns the free plan server-side, and
+          // subscription_status can only ever move via a service-role
+          // process (these columns aren't client-writable at all now).
         })
         .select("id")
         .single();
