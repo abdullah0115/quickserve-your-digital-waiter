@@ -549,6 +549,8 @@ function QrManager({ business }: { business: Business }) {
   const [tableNum, setTableNum] = useState("");
   const [label, setLabel] = useState("");
   const [printTarget, setPrintTarget] = useState<QrCode | null>(null);
+  const [bulkCount, setBulkCount] = useState("");
+  const [bulkGenerating, setBulkGenerating] = useState(false);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("qr_codes").select("*").eq("business_id", business.id);
@@ -567,6 +569,38 @@ function QrManager({ business }: { business: Business }) {
   const remove = async (id: string) => {
     if (!confirm("Delete this QR code?")) return;
     await supabase.from("qr_codes").delete().eq("id", id); load();
+  };
+
+  // Generates one QR code per table, continuing after the highest existing
+  // numeric table number — so running this again to add more tables later
+  // never collides with or overwrites QR codes that are already printed.
+  const bulkGenerate = async () => {
+    const count = Math.floor(Number(bulkCount));
+    if (!count || count < 1) return toast.error("Enter how many tables you need");
+    if (count > 100) return toast.error("Generate at most 100 at a time");
+
+    setBulkGenerating(true);
+    try {
+      const existingNumbers = codes
+        .map((c) => parseInt(c.table_number, 10))
+        .filter((n) => Number.isFinite(n));
+      const startFrom = existingNumbers.length ? Math.max(...existingNumbers) + 1 : 1;
+
+      const payload = Array.from({ length: count }, (_, i) => {
+        const n = startFrom + i;
+        return { business_id: business.id, table_number: String(n), label: `Table ${n}` };
+      });
+
+      const { error } = await supabase.from("qr_codes").insert(payload);
+      if (error) throw error;
+      toast.success(`Generated QR codes for tables ${startFrom}–${startFrom + count - 1}`);
+      setBulkCount("");
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't generate QR codes");
+    } finally {
+      setBulkGenerating(false);
+    }
   };
 
   return (
@@ -595,11 +629,35 @@ function QrManager({ business }: { business: Business }) {
           </div>
         </div>
       </CardContent></Card>
-      <Card className="mb-6"><CardContent className="p-5">
-        <div className="grid sm:grid-cols-3 gap-3">
-          <Input placeholder="Table number (e.g. 1)" value={tableNum} onChange={(e) => setTableNum(e.target.value)} />
-          <Input placeholder="Label (optional)" value={label} onChange={(e) => setLabel(e.target.value)} />
-          <Button onClick={add} className="bg-primary text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Create</Button>
+      <Card className="mb-6"><CardContent className="p-5 space-y-4">
+        <div>
+          <div className="text-xs font-medium text-muted-foreground mb-2">Add one table</div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <Input placeholder="Table number (e.g. 1)" value={tableNum} onChange={(e) => setTableNum(e.target.value)} />
+            <Input placeholder="Label (optional)" value={label} onChange={(e) => setLabel(e.target.value)} />
+            <Button onClick={add} className="bg-primary text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Create</Button>
+          </div>
+        </div>
+        <div className="border-t pt-4">
+          <div className="text-xs font-medium text-muted-foreground mb-2">Or generate several at once</div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              placeholder="Number of tables (e.g. 10)"
+              value={bulkCount}
+              onChange={(e) => setBulkCount(e.target.value)}
+              className="sm:col-span-2"
+            />
+            <Button onClick={bulkGenerate} disabled={bulkGenerating} variant="outline">
+              {bulkGenerating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <QrIcon className="w-4 h-4 mr-1" />}
+              Generate
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            Each table gets its own separate QR code — this picks up numbering right after your highest existing table, so it's safe to run again later when you add more tables.
+          </p>
         </div>
       </CardContent></Card>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
