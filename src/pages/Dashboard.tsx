@@ -35,7 +35,8 @@ interface MenuItem {
   category_id: string | null; is_available: boolean; is_featured: boolean; image_url: string | null;
 }
 interface Order {
-  id: string; token_number: number; customer_name: string; items: Array<{ name: string; quantity: number; price: number }>;
+  id: string; token_number: number; customer_name: string;
+  order_items: Array<{ name: string; quantity: number; price: number; added_by_name: string; created_at: string }>;
   total_amount: number; status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
   table_number: string | null; order_type: string; created_at: string;
 }
@@ -264,12 +265,18 @@ function OrdersKDS({ business }: { business: Business }) {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from("orders").select("*")
+    const { data, error } = await supabase.from("orders").select("*, order_items(*)")
       .eq("business_id", business.id)
       .in("status", ["pending", "preparing", "ready"])
       .order("created_at", { ascending: true });
     if (error) toast.error(error.message);
-    else setOrders(data as unknown as Order[]);
+    else {
+      const withSortedItems = (data as unknown as Order[]).map((o) => ({
+        ...o,
+        order_items: [...o.order_items].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+      }));
+      setOrders(withSortedItems);
+    }
     setLoading(false);
   }, [business.id]);
 
@@ -332,7 +339,14 @@ function OrdersKDS({ business }: { business: Business }) {
                           <div className="text-sm font-medium mb-1">{o.customer_name}</div>
                           {o.table_number && <div className="text-xs text-muted-foreground mb-2">Table {o.table_number}</div>}
                           <div className="text-xs text-muted-foreground space-y-0.5 mb-3 border-t pt-2">
-                            {o.items.map((it, i) => <div key={i}>{it.quantity}× {it.name}</div>)}
+                            {o.order_items.map((it, i) => (
+                              <div key={i}>
+                                {it.quantity}× {it.name}
+                                {it.added_by_name && it.added_by_name !== o.customer_name && (
+                                  <span className="text-muted-foreground/60"> ({it.added_by_name})</span>
+                                )}
+                              </div>
+                            ))}
                           </div>
                           <div className="text-sm font-semibold mb-3">PKR {Number(o.total_amount).toLocaleString()}</div>
                           {col.status === "pending" && (

@@ -12,8 +12,51 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      _backup_orders_items_20260713: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          items: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          items?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          items?: Json | null
+        }
+        Relationships: []
+      }
       business_analytics: {
         Row: {
           avg_order_value: number
@@ -314,6 +357,57 @@ export type Database = {
           },
         ]
       }
+      order_items: {
+        Row: {
+          added_by_name: string
+          created_at: string
+          id: string
+          menu_item_id: string | null
+          name: string
+          notes: string | null
+          order_id: string
+          price: number
+          quantity: number
+        }
+        Insert: {
+          added_by_name: string
+          created_at?: string
+          id?: string
+          menu_item_id?: string | null
+          name: string
+          notes?: string | null
+          order_id: string
+          price: number
+          quantity: number
+        }
+        Update: {
+          added_by_name?: string
+          created_at?: string
+          id?: string
+          menu_item_id?: string | null
+          name?: string
+          notes?: string | null
+          order_id?: string
+          price?: number
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           business_id: string
@@ -322,7 +416,6 @@ export type Database = {
           customer_name: string
           customer_phone: string | null
           id: string
-          items: Json
           notes: string | null
           notified_at: string | null
           order_type: Database["public"]["Enums"]["order_type"]
@@ -340,7 +433,6 @@ export type Database = {
           customer_name: string
           customer_phone?: string | null
           id?: string
-          items?: Json
           notes?: string | null
           notified_at?: string | null
           order_type?: Database["public"]["Enums"]["order_type"]
@@ -358,7 +450,6 @@ export type Database = {
           customer_name?: string
           customer_phone?: string | null
           id?: string
-          items?: Json
           notes?: string | null
           notified_at?: string | null
           order_type?: Database["public"]["Enums"]["order_type"]
@@ -423,6 +514,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      rate_limit_hits: {
+        Row: {
+          bucket_key: string
+          created_at: string
+          id: number
+        }
+        Insert: {
+          bucket_key: string
+          created_at?: string
+          id?: number
+        }
+        Update: {
+          bucket_key?: string
+          created_at?: string
+          id?: number
+        }
+        Relationships: []
       }
       subscription_plans: {
         Row: {
@@ -521,6 +630,115 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_order_item: {
+        Args: {
+          p_added_by_name: string
+          p_business_slug: string
+          p_menu_item_id: string
+          p_notes?: string
+          p_order_id: string
+          p_quantity: number
+        }
+        Returns: {
+          item_id: string
+          item_name: string
+          item_price: number
+          item_quantity: number
+          order_total: number
+        }[]
+      }
+      admin_list_businesses: {
+        Args: never
+        Returns: {
+          created_at: string
+          current_period_end: string
+          id: string
+          is_active: boolean
+          name: string
+          owner_email: string
+          slug: string
+          subscription_plan_name: string
+          subscription_status: Database["public"]["Enums"]["subscription_status"]
+          trial_ends_at: string
+        }[]
+      }
+      admin_set_business_active: {
+        Args: { p_business_id: string; p_is_active: boolean }
+        Returns: undefined
+      }
+      admin_set_subscription: {
+        Args: {
+          p_business_id: string
+          p_current_period_end?: string
+          p_status: Database["public"]["Enums"]["subscription_status"]
+          p_trial_ends_at?: string
+        }
+        Returns: undefined
+      }
+      check_rate_limit: {
+        Args: {
+          p_bucket_key: string
+          p_max_hits: number
+          p_window_seconds: number
+        }
+        Returns: boolean
+      }
+      create_order_with_items: {
+        Args: {
+          p_business_slug: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_items: Json
+          p_notes: string
+          p_order_type: Database["public"]["Enums"]["order_type"]
+          p_qr_code_id: string
+        }
+        Returns: {
+          id: string
+          token_number: number
+          total_amount: number
+        }[]
+      }
+      get_active_order_for_table: {
+        Args: { p_qr_code_id: string }
+        Returns: {
+          business_id: string
+          id: string
+          status: Database["public"]["Enums"]["order_status"]
+          token_number: number
+        }[]
+      }
+      get_active_orders_for_display: {
+        Args: { p_business_slug: string }
+        Returns: {
+          created_at: string
+          id: string
+          items: Json
+          status: Database["public"]["Enums"]["order_status"]
+          token_number: number
+        }[]
+      }
+      get_order_status: {
+        Args: {
+          p_business_slug: string
+          p_customer_phone?: string
+          p_order_id?: string
+          p_token_number?: number
+        }
+        Returns: {
+          business_id: string
+          created_at: string
+          customer_name: string
+          id: string
+          items: Json
+          order_type: Database["public"]["Enums"]["order_type"]
+          qr_code_id: string
+          status: Database["public"]["Enums"]["order_status"]
+          table_number: string
+          token_number: number
+          total_amount: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -532,81 +750,19 @@ export type Database = {
         Args: { _business_id: string; _user_id: string }
         Returns: boolean
       }
-      get_order_status: {
-        Args: {
-          p_business_slug: string
-          p_order_id?: string
-          p_token_number?: number
-          p_customer_phone?: string
-        }
-        Returns: {
-          id: string
-          token_number: number
-          status: Database["public"]["Enums"]["order_status"]
-          customer_name: string
-          items: Json
-          total_amount: number
-          table_number: string | null
-          qr_code_id: string | null
-          order_type: Database["public"]["Enums"]["order_type"]
-          created_at: string
-          business_id: string
-        }[]
-      }
       resolve_qr_code: {
-        Args: {
-          p_qr_id: string
-        }
+        Args: { p_qr_id: string }
         Returns: {
-          id: string
           business_id: string
+          id: string
+          is_active: boolean
           table_number: string
-          is_active: boolean
         }[]
-      }
-      get_active_orders_for_display: {
-        Args: {
-          p_business_slug: string
-        }
-        Returns: {
-          id: string
-          token_number: number
-          status: Database["public"]["Enums"]["order_status"]
-          items: Json
-          created_at: string
-        }[]
-      }
-      admin_list_businesses: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          id: string
-          name: string
-          slug: string
-          owner_email: string
-          subscription_status: Database["public"]["Enums"]["subscription_status"]
-          subscription_plan_name: string | null
-          trial_ends_at: string | null
-          current_period_end: string | null
-          is_active: boolean
-          created_at: string
-        }[]
-      }
-      admin_set_subscription: {
-        Args: {
-          p_business_id: string
-          p_status: Database["public"]["Enums"]["subscription_status"]
-          p_trial_ends_at?: string
-          p_current_period_end?: string
-        }
-        Returns: undefined
-      }
-      admin_set_business_active: {
-        Args: { p_business_id: string; p_is_active: boolean }
-        Returns: undefined
       }
     }
     Enums: {
       app_role: "admin" | "owner" | "staff"
+      notification_type: "new_order" | "order_ready" | "order_completed"
       order_status:
         | "pending"
         | "preparing"
@@ -614,7 +770,6 @@ export type Database = {
         | "completed"
         | "cancelled"
       order_type: "dine_in" | "takeaway"
-      notification_type: "new_order" | "order_ready" | "order_completed"
       subscription_status: "trial" | "active" | "past_due" | "canceled"
     }
     CompositeTypes: {
@@ -741,12 +896,15 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "owner", "staff"],
+      notification_type: ["new_order", "order_ready", "order_completed"],
       order_status: ["pending", "preparing", "ready", "completed", "cancelled"],
       order_type: ["dine_in", "takeaway"],
-      notification_type: ["new_order", "order_ready", "order_completed"],
       subscription_status: ["trial", "active", "past_due", "canceled"],
     },
   },

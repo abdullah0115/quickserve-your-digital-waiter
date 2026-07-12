@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ShoppingCart, ClipboardList, Search, Plus, Minus, Trash2, Star, UtensilsCrossed, Loader2, Check } from "lucide-react";
@@ -35,6 +35,10 @@ export default function Menu() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [qrCodeId, setQrCodeId] = useState<string | null>(null);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
+  // Set when this table already has a pending/preparing order — switches
+  // the cart into "add to order" mode instead of "place order" so 2-3
+  // people scanning the same QR can each contribute to one shared order.
+  const [existingOrder, setExistingOrder] = useState<{ id: string; token_number: number } | null>(null);
   const [cats, setCats] = useState<Cat[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [search, setSearch] = useState("");
@@ -88,6 +92,25 @@ export default function Menu() {
       });
   }, [business, qrParam]);
 
+  // A second (or third) phone scanning the same QR should join the table's
+  // existing order instead of being blocked by the one-order-per-table
+  // rule — auto-detected, no extra tap needed. Only pending/preparing
+  // orders are addable; once ready, the table shows as occupied via the
+  // normal one-order-per-table check if someone tries to place a new one.
+  const checkExistingOrder = useCallback(async () => {
+    if (!qrCodeId) { setExistingOrder(null); return; }
+    const { data } = await supabase
+      .rpc("get_active_order_for_table", { p_qr_code_id: qrCodeId })
+      .maybeSingle();
+    if (data && (data.status === "pending" || data.status === "preparing")) {
+      setExistingOrder({ id: data.id, token_number: data.token_number });
+    } else {
+      setExistingOrder(null);
+    }
+  }, [qrCodeId]);
+
+  useEffect(() => { checkExistingOrder(); }, [checkExistingOrder]);
+
   const filtered = useMemo(() => items.filter((it) => {
     if (selectedCat !== "all" && it.category_id !== selectedCat) return false;
     if (search && !it.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -122,7 +145,60 @@ export default function Menu() {
       toast.success(`Order #${order.token_number} placed!`);
       navigate(`/${slug}/order/${order.token_number}?id=${order.id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to place order");
+      const msg = err instanceof Error ? err.message : "Failed to place order";
+      // Race: another phone at this table created the order between us
+      // loading the page and submitting ours. Recover into add-mode
+      // instead of leaving the customer at a dead end.
+      if (msg.toLowerCase().includes("already has an active order")) {
+        await checkExistingOrder();
+        toast.info("Someone else just started an order for this table — add your items to it below.");
+      } else {
+        toast.error(msg);
+      }
+    } finally { setPlacing(false); }
+  };
+
+  const addToOrder = async () => {
+    if (!business || !existingOrder || cart.items.length === 0) return;
+    const parsed = checkoutFormSchema.safeParse(checkout);
+    if (!parsed.success) return toast.error(firstZodError(parsed));
+    setPlacing(true);
+    try {
+      const results = await Promise.allSettled(
+        cart.items.map(async (it) => {
+          const { data, error } = await supabase.functions.invoke("add-order-item", {
+            body: {
+              order_id: existingOrder.id,
+              business_slug: slug,
+              menu_item_id: it.id,
+              quantity: it.quantity,
+              added_by_name: checkout.name,
+              notes: checkout.notes || undefined,
+            },
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+          return data.data as { item_name: string; item_quantity: number };
+        }),
+      );
+
+      let anySuccess = false;
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          anySuccess = true;
+          // Immediate per-item confirmation — independent of the next
+          // order-status poll picking up the change.
+          toast.success(`${r.value.item_quantity}× ${r.value.item_name} added to Order #${existingOrder.token_number}`);
+        } else {
+          toast.error(`Couldn't add ${cart.items[i].name}: ${r.reason instanceof Error ? r.reason.message : "failed"}`);
+        }
+      });
+
+      if (anySuccess) {
+        cart.clear();
+        setCartOpen(false);
+        navigate(`/${slug}/order/${existingOrder.token_number}?id=${existingOrder.id}`);
+      }
     } finally { setPlacing(false); }
   };
 
@@ -207,6 +283,11 @@ export default function Menu() {
               </SheetTrigger>
               <SheetContent className="w-full sm:max-w-md flex flex-col">
                 <SheetHeader><SheetTitle className="font-display">Your Order</SheetTitle></SheetHeader>
+                {existingOrder && (
+                  <div className="bg-accent/10 border border-accent/30 rounded-lg px-3 py-2 text-xs text-foreground">
+                    This table already has an active order <strong>#{existingOrder.token_number}</strong> — your items will be added to it.
+                  </div>
+                )}
                 <div className="flex-1 overflow-auto py-4 space-y-3">
                   {cart.items.length === 0 && <p className="text-center text-muted-foreground py-12">Cart is empty</p>}
                   {cart.items.map((it) => (
@@ -235,8 +316,14 @@ export default function Menu() {
                     <div className="flex justify-between text-lg font-semibold py-2">
                       <span>Total</span><span className="font-mono">PKR {cartTotal.toLocaleString()}</span>
                     </div>
-                    <Button onClick={placeOrder} disabled={placing} size="lg" className="w-full bg-secondary hover:bg-secondary-hover text-secondary-foreground">
-                      {placing ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Place Order <Check className="ml-2 w-4 h-4" /></>}
+                    <Button onClick={existingOrder ? addToOrder : placeOrder} disabled={placing} size="lg" className="w-full bg-secondary hover:bg-secondary-hover text-secondary-foreground">
+                      {placing ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : existingOrder ? (
+                        <>Add to Order #{existingOrder.token_number} <Check className="ml-2 w-4 h-4" /></>
+                      ) : (
+                        <>Place Order <Check className="ml-2 w-4 h-4" /></>
+                      )}
                     </Button>
                   </div>
                 )}

@@ -3,16 +3,14 @@
 // Public order-creation endpoint for guest checkout (called from Menu.tsx).
 // The client sends menu_item_id + quantity per line item — nothing else.
 // Prices, item names, and the order total are always looked up fresh from
-// `menu_items` here; whatever the client claims a price/total to be is
-// ignored completely.
-//
-// This is a second, defense-in-depth layer on top of the `compute_order_total`
-// Postgres trigger (see supabase/migrations/20260709222148_initial_schema.sql),
-// which re-derives the same values again at the database level regardless of
-// which path an order comes through. Kept here mainly for friendlier
-// validation errors and as the front door for the online checkout flow —
-// the offline sync queue (useOfflineSync.ts) still inserts directly and
-// relies on the DB trigger alone.
+// `menu_items`, table_number is always resolved from a verified QR id, and
+// the whole order+items write happens atomically inside a single Postgres
+// function (create_order_with_items) — see
+// supabase/migrations/20260713000000_order_items_table.sql. This function
+// is just the public HTTP front door: request validation, a per-IP rate
+// limit (Postgres functions called through the connection pooler can't see
+// the real client IP, so this check has to live here), and friendly error
+// shaping.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.6";
 import { z } from "https://esm.sh/zod@3.23.8";
 
@@ -43,11 +41,17 @@ const createOrderSchema = z.object({
   notes: z.string().trim().max(300).optional(),
 });
 
-function respond(body: unknown) {
+function respond(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
+}
+
+function getClientIp(req: Request): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return "unknown";
 }
 
 Deno.serve(async (req) => {
@@ -77,106 +81,35 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: business, error: bizErr } = await supabase
-      .from("businesses")
-      .select("id, is_active")
-      .eq("slug", body.business_slug)
-      .maybeSingle();
-    if (bizErr) throw bizErr;
-    if (!business || !business.is_active) {
-      return respond({ error: "Business not found or inactive" });
+    const ip = getClientIp(req);
+    const { data: ipOk, error: rateErr } = await supabase.rpc("check_rate_limit", {
+      p_bucket_key: `create_order:ip:${ip}`,
+      p_max_hits: 15,
+      p_window_seconds: 300,
+    });
+    if (rateErr) throw rateErr;
+    if (!ipOk) {
+      return respond({ error: "Too many attempts — please wait a few minutes and try again." }, 429);
     }
 
-    // Resolve the real table number from a verified, active QR code for
-    // this business — table_number is never taken from the client
-    // directly. The resolve_order_table DB trigger re-derives this exact
-    // same way at insert time regardless of what's sent here.
-    let tableNumber: string | null = null;
-    if (body.qr_code_id) {
-      const { data: qr } = await supabase
-        .from("qr_codes")
-        .select("table_number, is_active, business_id")
-        .eq("id", body.qr_code_id)
-        .maybeSingle();
-      if (!qr || !qr.is_active || qr.business_id !== business.id) {
-        return respond({ error: "Invalid or inactive QR code — please scan the code at your table." });
-      }
-      tableNumber = qr.table_number;
+    const { data, error } = await supabase.rpc("create_order_with_items", {
+      p_business_slug: body.business_slug,
+      p_customer_name: body.customer_name,
+      p_customer_phone: body.customer_phone ?? null,
+      p_items: body.items.map((i) => ({
+        menu_item_id: i.menu_item_id,
+        quantity: i.quantity,
+        notes: i.notes ?? null,
+      })),
+      p_qr_code_id: body.qr_code_id ?? null,
+      p_order_type: body.order_type,
+      p_notes: body.notes ?? null,
+    });
+    if (error) {
+      return respond({ error: error.message });
     }
 
-    // One active order per table at a time — check first for a friendly,
-    // specific message; the partial unique index on orders (see migration
-    // 20260710010000) is the atomic backstop that actually closes the race
-    // if two devices submit for the same table at the same instant.
-    if (tableNumber) {
-      const { data: existingOrder } = await supabase
-        .from("orders")
-        .select("token_number")
-        .eq("business_id", business.id)
-        .eq("table_number", tableNumber)
-        .in("status", ["pending", "preparing", "ready"])
-        .maybeSingle();
-      if (existingOrder) {
-        return respond({
-          error: `Table ${tableNumber} already has an active order (#${existingOrder.token_number}). Please wait for it to be completed before placing a new order.`,
-        });
-      }
-    }
-
-    const itemIds = [...new Set(body.items.map((i) => i.menu_item_id))];
-    const { data: menuItems, error: itemsErr } = await supabase
-      .from("menu_items")
-      .select("id, name, price, is_available, business_id")
-      .in("id", itemIds);
-    if (itemsErr) throw itemsErr;
-
-    const menuById = new Map((menuItems ?? []).map((m) => [m.id, m]));
-    const orderItems: Array<{ menu_item_id: string; name: string; price: number; quantity: number; notes?: string }> = [];
-    let total = 0;
-
-    for (const item of body.items) {
-      const menuItem = menuById.get(item.menu_item_id);
-      if (!menuItem || menuItem.business_id !== business.id || !menuItem.is_available) {
-        return respond({ error: `Menu item ${item.menu_item_id} is unavailable` });
-      }
-      const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
-      orderItems.push({
-        menu_item_id: menuItem.id,
-        name: menuItem.name,
-        price: Number(menuItem.price),
-        quantity: qty,
-        ...(item.notes ? { notes: item.notes } : {}),
-      });
-      total += Number(menuItem.price) * qty;
-    }
-
-    const { data: order, error: insertErr } = await supabase
-      .from("orders")
-      .insert({
-        business_id: business.id,
-        token_number: 0, // overridden by the set_order_token DB trigger
-        customer_name: body.customer_name.trim(),
-        customer_phone: body.customer_phone?.trim() || null,
-        items: orderItems,
-        total_amount: total,
-        qr_code_id: body.qr_code_id ?? null,
-        order_type: body.order_type,
-        notes: body.notes || null,
-      })
-      .select("id, token_number, total_amount")
-      .single();
-    if (insertErr) {
-      // 23505 = unique_violation — the two-devices-at-once race the
-      // pre-check above couldn't catch in time.
-      if (insertErr.code === "23505") {
-        return respond({
-          error: `Table ${tableNumber ?? ""} already has an active order in progress. Please wait for it to be completed before placing a new order.`,
-        });
-      }
-      throw insertErr;
-    }
-
-    return respond({ data: order });
+    return respond({ data: Array.isArray(data) ? data[0] : data });
   } catch (err) {
     console.error("create-order error:", err);
     return respond({ error: err instanceof Error ? err.message : "Failed to create order" });
