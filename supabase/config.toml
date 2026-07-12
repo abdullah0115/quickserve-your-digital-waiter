@@ -6,13 +6,15 @@ project_id = "hkxewwtanrfjrmsarhym"
 # has to stay explicitly listed here, not just the new SMTP block, or a
 # future push will silently reset it back to a CLI default.
 [auth]
-site_url = "http://localhost:3000"
+site_url = "https://quickserve-your-digital-waiter.vercel.app"
 # Without this, Supabase rejects any redirectTo that isn't exactly
 # site_url and silently falls back to it — which is why the password
 # recovery link was landing on the bare homepage (still establishing a
 # session there, since the client picks up the recovery token on
-# whatever page it lands on) instead of /auth/reset-password.
-additional_redirect_urls = ["http://localhost:3000/**"]
+# whatever page it lands on) instead of /auth/reset-password. Both the
+# live production domain and localhost (for local dev testing) are
+# allow-listed.
+additional_redirect_urls = ["https://quickserve-your-digital-waiter.vercel.app/**", "http://localhost:3000/**"]
 
 [auth.email]
 enable_confirmations = true
