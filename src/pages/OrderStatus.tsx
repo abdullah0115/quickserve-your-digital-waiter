@@ -17,7 +17,7 @@ import { ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/useMyOrders";
 
 interface Order {
   id: string; token_number: number; status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
-  customer_name: string; items: Array<{ name: string; quantity: number; price: number }>;
+  customer_name: string; items: Array<{ name: string; quantity: number; price: number; added_by_name?: string }>;
   total_amount: number; created_at: string; business_id: string;
   table_number: string | null; qr_code_id: string | null; order_type: "dine_in" | "takeaway";
 }
@@ -233,7 +233,12 @@ export default function OrderStatus() {
                   <div className="space-y-1.5">
                     {order.items.map((it, i) => (
                       <div key={i} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{it.quantity}× {it.name}</span>
+                        <span className="text-muted-foreground">
+                          {it.quantity}× {it.name}
+                          {it.added_by_name && it.added_by_name !== order.customer_name && (
+                            <span className="text-xs text-muted-foreground/70"> — added by {it.added_by_name}</span>
+                          )}
+                        </span>
                         <span className="font-mono">PKR {(it.price * it.quantity).toLocaleString()}</span>
                       </div>
                     ))}

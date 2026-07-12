@@ -103,7 +103,7 @@ export function useMyOrders(slug: string | undefined) {
   // the get_order_status RPC and now also notifies on a status change.
   useEffect(() => {
     if (!slug || !activeIds) return;
-    const interval = setInterval(refresh, 6000);
+    const interval = setInterval(refresh, 5000);
     return () => clearInterval(interval);
   }, [activeIds, slug, refresh]);
 
