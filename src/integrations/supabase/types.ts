@@ -739,6 +739,13 @@ export type Database = {
           total_amount: number
         }[]
       }
+      get_scan_usage: {
+        Args: { p_business_id: string }
+        Returns: {
+          scans_limit: number
+          scans_used: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

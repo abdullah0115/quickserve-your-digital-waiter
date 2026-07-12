@@ -20,11 +20,21 @@ const CORS_HEADERS = {
 
 const GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 
+const MONTHLY_SCAN_LIMIT = 20;
+const MONTHLY_WINDOW_SECONDS = 30 * 24 * 60 * 60;
+const IP_BURST_LIMIT = 10;
+const IP_BURST_WINDOW_SECONDS = 60 * 60;
+
 // Data URL only — the client resizes/compresses the photo client-side
-// before base64-encoding it, so this is never the full multi-MB original.
+// before base64-encoding it (see resizeImage.ts, capped ~1600px/JPEG q0.85,
+// normally a few hundred KB), so this is never the full multi-MB original.
+// The 4MB ceiling here is a server-side backstop for a caller that bypasses
+// that resize entirely, not a limit the normal UI flow should ever hit.
 const scanMenuSchema = z.object({
   business_id: z.string().uuid("Invalid business_id"),
-  image: z.string().regex(/^data:image\/(png|jpeg|jpg|webp);base64,/, "image must be a base64 data URL"),
+  image: z.string()
+    .regex(/^data:image\/(png|jpeg|jpg|webp);base64,/, "image must be a base64 data URL")
+    .max(4_000_000, "Image is too large — please try a smaller photo."),
 });
 
 const extractedItemSchema = z.object({
@@ -41,6 +51,12 @@ function respond(body: unknown, status = 200) {
     status,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
+}
+
+function getClientIp(req: Request): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return "unknown";
 }
 
 const FRIENDLY_UNAVAILABLE = "Scan abhi available nahi, thodi der baad try karein.";
@@ -93,6 +109,39 @@ Deno.serve(async (req) => {
   });
   if (!isMember) {
     return respond({ error: "Not authorized for this business" }, 403);
+  }
+
+  // Burst guard first (cheap, catches scripted hammering fastest) — this
+  // one consumes on every attempt regardless of outcome, since it's about
+  // request volume, not Groq spend.
+  const ip = getClientIp(req);
+  const { data: ipOk, error: ipRateErr } = await supabase.rpc("check_rate_limit", {
+    p_bucket_key: `scan_menu:ip:${ip}`,
+    p_max_hits: IP_BURST_LIMIT,
+    p_window_seconds: IP_BURST_WINDOW_SECONDS,
+  });
+  if (ipRateErr) throw ipRateErr;
+  if (!ipOk) {
+    return respond({ error: "Too many scan attempts — please wait a bit and try again." }, 429);
+  }
+
+  // The real product limit — 20 scans per rolling 30 days, per user. Read
+  // (not incremented) here, so a Groq outage doesn't cost the user part of
+  // their quota for a scan that never actually happened — the quota is
+  // only recorded once Groq has actually responded, further down.
+  const monthlyBucket = `scan_menu:user:${userData.user.id}`;
+  const { count: scansUsed, error: usageErr } = await supabase
+    .from("rate_limit_hits")
+    .select("*", { count: "exact", head: true })
+    .eq("bucket_key", monthlyBucket)
+    .gte("created_at", new Date(Date.now() - MONTHLY_WINDOW_SECONDS * 1000).toISOString());
+  if (usageErr) throw usageErr;
+  if ((scansUsed ?? 0) >= MONTHLY_SCAN_LIMIT) {
+    return respond({
+      error: `You've used all ${MONTHLY_SCAN_LIMIT} menu scans for this month. Try again next month, or add items manually.`,
+      scans_used: MONTHLY_SCAN_LIMIT,
+      scans_limit: MONTHLY_SCAN_LIMIT,
+    }, 429);
   }
 
   const groqKey = Deno.env.get("GROQ_API_KEY");
@@ -149,6 +198,11 @@ Rules:
     return respond({ error: FRIENDLY_UNAVAILABLE }, 503);
   }
 
+  // Groq actually responded (cost was incurred) — record this against the
+  // user's monthly quota now, whatever happens with parsing below.
+  await supabase.from("rate_limit_hits").insert({ bucket_key: monthlyBucket });
+  const newScansUsed = (scansUsed ?? 0) + 1;
+
   let groqJson: unknown;
   try {
     groqJson = await groqRes.json();
@@ -164,6 +218,8 @@ Rules:
     return respond({ error: FRIENDLY_UNAVAILABLE }, 503);
   }
 
+  const usage = { scans_used: newScansUsed, scans_limit: MONTHLY_SCAN_LIMIT };
+
   let extracted: unknown;
   try {
     extracted = JSON.parse(content);
@@ -172,13 +228,13 @@ Rules:
     // found" rather than an error, so the owner falls through to manual
     // entry instead of seeing a scary failure for what's really just an
     // unreadable photo.
-    return respond({ data: { items: [] } });
+    return respond({ data: { items: [], ...usage } });
   }
 
   const outputParsed = groqOutputSchema.safeParse(extracted);
   if (!outputParsed.success) {
-    return respond({ data: { items: [] } });
+    return respond({ data: { items: [], ...usage } });
   }
 
-  return respond({ data: { items: outputParsed.data.items } });
+  return respond({ data: { items: outputParsed.data.items, ...usage } });
 });
