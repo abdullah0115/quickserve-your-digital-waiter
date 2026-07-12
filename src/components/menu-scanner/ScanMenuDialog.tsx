@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, ScanLine, Trash2, TriangleAlert } from "lucide-react";
 import {
   Dialog,
@@ -43,17 +43,20 @@ type Step = "upload" | "scanning" | "review" | "empty" | "error";
 
 const FALLBACK_ERROR = "Scan abhi available nahi, thodi der baad try karein.";
 
-async function friendlyFunctionError(error: unknown): Promise<string> {
+async function parseFunctionError(error: unknown): Promise<{ message: string; usage?: { used: number; limit: number } }> {
   const ctx = (error as { context?: Response } | null)?.context;
   if (ctx instanceof Response) {
     try {
       const body = await ctx.clone().json();
-      if (typeof body?.error === "string") return body.error;
+      const usage = typeof body?.scans_used === "number" && typeof body?.scans_limit === "number"
+        ? { used: body.scans_used, limit: body.scans_limit }
+        : undefined;
+      if (typeof body?.error === "string") return { message: body.error, usage };
     } catch {
       // fall through to generic message below
     }
   }
-  return FALLBACK_ERROR;
+  return { message: FALLBACK_ERROR };
 }
 
 export function ScanMenuDialog({
@@ -69,7 +72,17 @@ export function ScanMenuDialog({
   const [errorMsg, setErrorMsg] = useState("");
   const [rows, setRows] = useState<ScannedRow[]>([]);
   const [saving, setSaving] = useState(false);
+  const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Show "X of 20 scans used this month" up front, so the owner knows the
+  // cap exists before they try — a plain read, doesn't spend a scan.
+  useEffect(() => {
+    if (!open) return;
+    supabase.rpc("get_scan_usage", { p_business_id: businessId }).maybeSingle().then(({ data }) => {
+      if (data) setUsage({ used: data.scans_used, limit: data.scans_limit });
+    });
+  }, [open, businessId]);
 
   const reset = () => {
     setStep("upload");
@@ -89,8 +102,21 @@ export function ScanMenuDialog({
       const { data, error } = await supabase.functions.invoke("scan-menu", {
         body: { business_id: businessId, image: dataUrl },
       });
-      if (error) throw new Error(await friendlyFunctionError(error));
-      if (data?.error) throw new Error(data.error);
+      if (error) {
+        const { message, usage: errUsage } = await parseFunctionError(error);
+        if (errUsage) setUsage(errUsage);
+        throw new Error(message);
+      }
+      if (data?.error) {
+        if (typeof data.scans_used === "number" && typeof data.scans_limit === "number") {
+          setUsage({ used: data.scans_used, limit: data.scans_limit });
+        }
+        throw new Error(data.error);
+      }
+
+      if (typeof data?.data?.scans_used === "number" && typeof data?.data?.scans_limit === "number") {
+        setUsage({ used: data.data.scans_used, limit: data.data.scans_limit });
+      }
 
       const items = (data?.data?.items ?? []) as Array<{ name: string; price: number; category: string | null }>;
       if (items.length === 0) {
@@ -186,15 +212,31 @@ export function ScanMenuDialog({
 
         {step === "upload" && (
           <div className="space-y-4">
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFileChange} />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full border-2 border-dashed rounded-xl p-10 flex flex-col items-center gap-3 text-muted-foreground hover:border-accent hover:text-accent transition"
-            >
-              <Camera className="w-10 h-10" />
-              <div className="text-sm font-medium">Tap to take a photo or upload an image</div>
-              <div className="text-xs">A clear, well-lit photo of your menu works best</div>
-            </button>
+            {usage && (
+              <p className="text-xs text-muted-foreground text-center">
+                {usage.used} of {usage.limit} menu scans used this month
+              </p>
+            )}
+            {usage && usage.used >= usage.limit ? (
+              <Alert>
+                <TriangleAlert className="w-4 h-4" />
+                <AlertDescription>
+                  You've used all {usage.limit} menu scans for this month. Try again next month, or add items manually.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFileChange} />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full border-2 border-dashed rounded-xl p-10 flex flex-col items-center gap-3 text-muted-foreground hover:border-accent hover:text-accent transition"
+                >
+                  <Camera className="w-10 h-10" />
+                  <div className="text-sm font-medium">Tap to take a photo or upload an image</div>
+                  <div className="text-xs">A clear, well-lit photo of your menu works best</div>
+                </button>
+              </>
+            )}
             <Button variant="ghost" className="w-full" onClick={() => { onManualFallback(); handleOpenChange(false); }}>
               I'll add items manually instead
             </Button>
@@ -215,7 +257,9 @@ export function ScanMenuDialog({
               <AlertDescription>{errorMsg}</AlertDescription>
             </Alert>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={reset}>Try again</Button>
+              {!(usage && usage.used >= usage.limit) && (
+                <Button variant="outline" className="flex-1" onClick={reset}>Try again</Button>
+              )}
               <Button className="flex-1 bg-primary text-primary-foreground" onClick={() => { onManualFallback(); handleOpenChange(false); }}>
                 Add manually instead
               </Button>
