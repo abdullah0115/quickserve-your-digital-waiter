@@ -47,7 +47,7 @@ export default function ResetPassword() {
 
   return (
     <>
-      <SEO title="Reset password — QuickServe" description="Set a new password for your QuickServe account." noIndex />
+      <SEO title="Reset password — QuickWaiterz" description="Set a new password for your QuickWaiterz account." noIndex />
       <div className="min-h-screen bg-gradient-hero flex items-center justify-center px-4 pattern-warm">
         <div className="w-full max-w-md">
           <Card className="shadow-warm border-border/60">
@@ -56,7 +56,7 @@ export default function ResetPassword() {
                 <div className="w-10 h-10 rounded-xl bg-gradient-coffee flex items-center justify-center">
                   <Coffee className="w-5 h-5 text-accent" />
                 </div>
-                <span className="font-display text-xl font-bold">QuickServe</span>
+                <span className="font-display text-xl font-bold">QuickWaiterz</span>
               </div>
 
               {!ready ? (

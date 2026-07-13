@@ -110,7 +110,7 @@ export default function AdminPanel() {
 
   return (
     <>
-      <SEO title="Admin — QuickServe" description="Platform administration" noIndex />
+      <SEO title="Admin — QuickWaiterz" description="Platform administration" noIndex />
       <div className="min-h-screen bg-muted/30 py-10 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6 flex items-center justify-between">

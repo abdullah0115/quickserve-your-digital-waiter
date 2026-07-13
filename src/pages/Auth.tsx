@@ -43,7 +43,7 @@ export default function Auth() {
         });
         if (error) throw error;
         if (data.session) {
-          toast.success("Welcome to QuickServe! Let's set up your business.");
+          toast.success("Welcome to QuickWaiterz! Let's set up your business.");
           navigate("/onboarding");
         } else {
           toast.success("Check your email to confirm your account.");
@@ -65,7 +65,7 @@ export default function Auth() {
 
   return (
     <>
-      <SEO title={`${mode === "signup" ? "Sign up" : mode === "forgot" ? "Reset password" : "Sign in"} — QuickServe`} description="Sign in to your QuickServe account." noIndex />
+      <SEO title={`${mode === "signup" ? "Sign up" : mode === "forgot" ? "Reset password" : "Sign in"} — QuickWaiterz`} description="Sign in to your QuickWaiterz account." noIndex />
       <div className="min-h-screen bg-gradient-hero flex items-center justify-center px-4 pattern-warm">
         <div className="w-full max-w-md">
           <Link to="/" className="inline-flex items-center gap-2 mb-8 text-sm text-muted-foreground hover:text-foreground">
@@ -77,7 +77,7 @@ export default function Auth() {
                 <div className="w-10 h-10 rounded-xl bg-gradient-coffee flex items-center justify-center">
                   <Coffee className="w-5 h-5 text-accent" />
                 </div>
-                <span className="font-display text-xl font-bold">QuickServe</span>
+                <span className="font-display text-xl font-bold">QuickWaiterz</span>
               </div>
               {mode === "forgot" ? (
                 <>

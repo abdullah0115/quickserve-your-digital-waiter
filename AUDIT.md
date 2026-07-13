@@ -1,4 +1,4 @@
-# QuickServe — Production Readiness Audit
+# QuickWaiterz — Production Readiness Audit
 
 **Date:** 2026-07-09
 **Scope:** Security, code quality, and architecture review of the Supabase + React (Vite SPA) codebase.

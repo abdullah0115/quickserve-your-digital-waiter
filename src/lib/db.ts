@@ -57,7 +57,7 @@ export interface LocalNotification {
   createdAt: number
 }
 
-class QuickServeDB extends Dexie {
+class QuickWaiterzDB extends Dexie {
   pendingOrders!: Table<PendingOrder, number>
   orderQueue!: Table<OrderQueue, number>
   cachedMenu!: Table<CachedMenu, number>
@@ -65,7 +65,7 @@ class QuickServeDB extends Dexie {
   localNotifications!: Table<LocalNotification, number>
 
   constructor() {
-    super('QuickServeDB')
+    super('QuickWaiterzDB')
     
     this.version(2).stores({
       pendingOrders: '++id, localId, businessSlug, synced, createdAt, syncAttempts',
@@ -77,7 +77,7 @@ class QuickServeDB extends Dexie {
   }
 }
 
-export const db = new QuickServeDB()
+export const db = new QuickWaiterzDB()
 
 // Enhanced Helper Functions
 
