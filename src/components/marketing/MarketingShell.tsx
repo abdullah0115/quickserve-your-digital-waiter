@@ -16,7 +16,7 @@ export function MarketingNav() {
           <div className="w-9 h-9 rounded-xl bg-gradient-coffee flex items-center justify-center shadow-soft group-hover:shadow-warm transition-shadow">
             <Coffee className="w-5 h-5 text-accent" strokeWidth={2.5} />
           </div>
-          <span className="font-display text-xl font-bold tracking-tight">QuickServe</span>
+          <span className="font-display text-xl font-bold tracking-tight">QuickWaiterz</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
@@ -74,7 +74,7 @@ export function MarketingFooter() {
             <div className="w-8 h-8 rounded-lg bg-gradient-coffee flex items-center justify-center">
               <Coffee className="w-4 h-4 text-accent" />
             </div>
-            <span className="font-display text-lg font-bold">QuickServe</span>
+            <span className="font-display text-lg font-bold">QuickWaiterz</span>
           </div>
           <p className="text-sm text-muted-foreground max-w-md">
             The smart QR ordering and queue management system for modern cafes and restaurants.
@@ -97,7 +97,7 @@ export function MarketingFooter() {
       </div>
       <div className="border-t">
         <div className="container mx-auto px-4 py-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} QuickServe. Crafted with care.
+          © {new Date().getFullYear()} QuickWaiterz. Crafted with care.
         </div>
       </div>
     </footer>

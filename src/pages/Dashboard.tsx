@@ -116,7 +116,7 @@ export default function Dashboard() {
               <div className="w-8 h-8 rounded-lg bg-gradient-coffee flex items-center justify-center">
                 <Coffee className="w-4 h-4 text-accent" />
               </div>
-              <span className="font-display font-bold">QuickServe</span>
+              <span className="font-display font-bold">QuickWaiterz</span>
             </div>
             <div className="text-xs text-muted-foreground mt-2 truncate">{business.name}</div>
           </div>

@@ -76,7 +76,7 @@ export default function Onboarding() {
         display_order: 0,
       });
 
-      toast.success(`${name} is ready! Welcome to QuickServe.`);
+      toast.success(`${name} is ready! Welcome to QuickWaiterz.`);
       navigate("/dashboard");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create business");
@@ -91,14 +91,14 @@ export default function Onboarding() {
 
   return (
     <>
-      <SEO title="Set up your business — QuickServe" description="Create your QuickServe business in minutes." noIndex />
+      <SEO title="Set up your business — QuickWaiterz" description="Create your QuickWaiterz business in minutes." noIndex />
       <div className="min-h-screen bg-gradient-hero flex items-center justify-center px-4 py-12 pattern-warm">
         <div className="w-full max-w-xl">
           <div className="flex items-center gap-2 mb-8 justify-center">
             <div className="w-10 h-10 rounded-xl bg-gradient-coffee flex items-center justify-center">
               <Coffee className="w-5 h-5 text-accent" />
             </div>
-            <span className="font-display text-xl font-bold">QuickServe</span>
+            <span className="font-display text-xl font-bold">QuickWaiterz</span>
           </div>
           <Card className="shadow-warm border-border/60">
             <CardContent className="p-8">

@@ -37,4 +37,4 @@ port = 587
 user = "QuickWaiterz@gmail.com"
 pass = "env(SMTP_PASSWORD)"
 admin_email = "QuickWaiterz@gmail.com"
-sender_name = "QuickServe"
+sender_name = "QuickWaiterz"

@@ -39,7 +39,7 @@ export default function Pricing() {
   return (
     <>
       <SEO
-        title="Pricing — QuickServe"
+        title="Pricing — QuickWaiterz"
         description="Simple, transparent pricing for restaurants and cafes of every size. Start free for 14 days. No credit card required."
       />
       <div className="min-h-screen bg-background">

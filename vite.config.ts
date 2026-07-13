@@ -11,8 +11,8 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'hero-cafe.jpg', 'feature-qr.jpg'],
       
       manifest: {
-        name: 'QuickServe - Restaurant Queue Management',
-        short_name: 'QuickServe',
+        name: 'QuickWaiterz - Restaurant Queue Management',
+        short_name: 'QuickWaiterz',
         description: 'Smart QR ordering system for restaurants and cafes',
         theme_color: '#2D1810',
         background_color: '#FAF8F5',

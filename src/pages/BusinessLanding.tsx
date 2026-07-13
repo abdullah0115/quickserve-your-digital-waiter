@@ -62,7 +62,7 @@ export default function BusinessLanding() {
   return (
     <>
       <SEO
-        title={`${business.name} — Order Online | QuickServe`}
+        title={`${business.name} — Order Online | QuickWaiterz`}
         description={business.description ?? business.tagline ?? `Order online from ${business.name}`}
         image={business.cover_image_url ?? undefined}
         type="restaurant"
@@ -167,7 +167,7 @@ export default function BusinessLanding() {
         </section>
 
         <footer className="border-t py-6 text-center text-xs text-muted-foreground">
-          Powered by <Link to="/" className="font-semibold text-foreground hover:text-accent">QuickServe</Link>
+          Powered by <Link to="/" className="font-semibold text-foreground hover:text-accent">QuickWaiterz</Link>
         </footer>
       </div>
     </>

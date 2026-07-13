@@ -6,7 +6,7 @@ import { SEO } from "@/components/SEO";
 export default function NotFound() {
   return (
     <>
-      <SEO title="Page Not Found — QuickServe" description="The page you're looking for doesn't exist." noIndex />
+      <SEO title="Page Not Found — QuickWaiterz" description="The page you're looking for doesn't exist." noIndex />
       <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-hero pattern-warm">
         <div className="text-center max-w-md">
           <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-coffee flex items-center justify-center shadow-warm">
