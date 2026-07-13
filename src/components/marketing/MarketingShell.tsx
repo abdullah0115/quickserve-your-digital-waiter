@@ -68,7 +68,7 @@ export function MarketingNav() {
 export function MarketingFooter() {
   return (
     <footer className="border-t bg-muted/30 mt-24">
-      <div className="container mx-auto px-4 lg:px-8 py-12 grid md:grid-cols-4 gap-8">
+      <div className="container mx-auto px-4 lg:px-8 py-12 grid md:grid-cols-5 gap-8">
         <div className="md:col-span-2">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-coffee flex items-center justify-center">
@@ -92,6 +92,13 @@ export function MarketingFooter() {
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li><a href="#" className="hover:text-foreground">About</a></li>
             <li><a href="#" className="hover:text-foreground">Contact</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 className="font-semibold mb-3 text-sm">Legal</h4>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li><Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
+            <li><Link to="/terms" className="hover:text-foreground">Terms of Service</Link></li>
           </ul>
         </div>
       </div>

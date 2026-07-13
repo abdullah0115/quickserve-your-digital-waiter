@@ -15,6 +15,12 @@ import { onboardingSchema, firstZodError } from "@/lib/validation";
 const slugify = (s: string) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 
+// Top-level static routes in App.tsx — a business slug matching one of these
+// would be shadowed and never reachable at "/:slug".
+const RESERVED_SLUGS = new Set([
+  "pricing", "auth", "onboarding", "dashboard", "admin", "privacy", "terms",
+]);
+
 export default function Onboarding() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -42,7 +48,7 @@ export default function Onboarding() {
       let attempts = 0;
       while (attempts < 5) {
         const { data: existing } = await supabase.from("businesses").select("id").eq("slug", slug).maybeSingle();
-        if (!existing) break;
+        if (!existing && !RESERVED_SLUGS.has(slug)) break;
         slug = `${baseSlug}-${Math.random().toString(36).slice(2, 6)}`;
         attempts++;
       }
