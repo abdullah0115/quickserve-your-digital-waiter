@@ -52,7 +52,9 @@ export default function Terms() {
               billing — your plan and its status are set by us based on your agreement with
               us. We'll communicate any change to your plan or billing arrangement directly.
               We may change plan pricing going forward, but won't change what you've already
-              agreed to pay for a current billing period without notice.
+              agreed to pay for a current billing period without notice. See our{" "}
+              <a href="/refund" className="text-accent hover:underline">Refund Policy</a> for
+              cancellation and refund terms.
             </p>
           </section>
 

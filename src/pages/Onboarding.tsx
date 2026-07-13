@@ -18,7 +18,7 @@ const slugify = (s: string) =>
 // Top-level static routes in App.tsx — a business slug matching one of these
 // would be shadowed and never reachable at "/:slug".
 const RESERVED_SLUGS = new Set([
-  "pricing", "auth", "onboarding", "dashboard", "admin", "privacy", "terms",
+  "pricing", "auth", "onboarding", "dashboard", "admin", "privacy", "terms", "refund",
 ]);
 
 export default function Onboarding() {
