@@ -15,6 +15,7 @@ export const onboardingSchema = z.object({
   name: z.string().trim().min(1, "Business name is required").max(100, "Name is too long"),
   tagline: z.string().trim().max(150, "Tagline is too long"),
   city: z.string().trim().max(100, "City name is too long"),
+  country: z.enum(["Pakistan", "International"], { errorMap: () => ({ message: "Select a country" }) }),
   cuisine: z.string().trim().max(50, "Cuisine is too long"),
   phone: z.string().trim().max(20, "Phone number is too long"),
 });

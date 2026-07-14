@@ -109,7 +109,6 @@ export type Database = {
           cover_image_url: string | null
           created_at: string
           cuisine_type: string | null
-          current_period_end: string | null
           description: string | null
           email: string | null
           id: string
@@ -121,13 +120,8 @@ export type Database = {
           owner_id: string
           phone: string | null
           slug: string
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
-          subscription_plan_id: string | null
-          subscription_status: Database["public"]["Enums"]["subscription_status"]
           tagline: string | null
           theme_color: string
-          trial_ends_at: string | null
           updated_at: string
         }
         Insert: {
@@ -137,7 +131,6 @@ export type Database = {
           cover_image_url?: string | null
           created_at?: string
           cuisine_type?: string | null
-          current_period_end?: string | null
           description?: string | null
           email?: string | null
           id?: string
@@ -149,13 +142,8 @@ export type Database = {
           owner_id: string
           phone?: string | null
           slug: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          subscription_plan_id?: string | null
-          subscription_status?: Database["public"]["Enums"]["subscription_status"]
           tagline?: string | null
           theme_color?: string
-          trial_ends_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -165,7 +153,6 @@ export type Database = {
           cover_image_url?: string | null
           created_at?: string
           cuisine_type?: string | null
-          current_period_end?: string | null
           description?: string | null
           email?: string | null
           id?: string
@@ -177,24 +164,23 @@ export type Database = {
           owner_id?: string
           phone?: string | null
           slug?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          subscription_plan_id?: string | null
-          subscription_status?: Database["public"]["Enums"]["subscription_status"]
           tagline?: string | null
           theme_color?: string
-          trial_ends_at?: string | null
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "businesses_subscription_plan_id_fkey"
-            columns: ["subscription_plan_id"]
-            isOneToOne: false
-            referencedRelation: "subscription_plans"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
+      }
+      managed_setup_cities: {
+        Row: {
+          city: string
+        }
+        Insert: {
+          city: string
+        }
+        Update: {
+          city?: string
+        }
+        Relationships: []
       }
       menu_categories: {
         Row: {
@@ -477,6 +463,66 @@ export type Database = {
           },
         ]
       }
+      plan_configs: {
+        Row: {
+          analytics_level: string
+          currency: string | null
+          display_order: number
+          features: Json
+          has_watermark: boolean
+          is_active: boolean
+          max_orders_per_day: number | null
+          max_tables: number | null
+          monthly_price: number
+          name: string
+          paddle_price_id: string | null
+          paddle_setup_fee_price_id: string | null
+          plan_type: string
+          requires_city_match: boolean
+          scan_menu_limit: number | null
+          setup_fee: number
+          support_level: string
+        }
+        Insert: {
+          analytics_level?: string
+          currency?: string | null
+          display_order?: number
+          features?: Json
+          has_watermark?: boolean
+          is_active?: boolean
+          max_orders_per_day?: number | null
+          max_tables?: number | null
+          monthly_price?: number
+          name: string
+          paddle_price_id?: string | null
+          paddle_setup_fee_price_id?: string | null
+          plan_type: string
+          requires_city_match?: boolean
+          scan_menu_limit?: number | null
+          setup_fee?: number
+          support_level?: string
+        }
+        Update: {
+          analytics_level?: string
+          currency?: string | null
+          display_order?: number
+          features?: Json
+          has_watermark?: boolean
+          is_active?: boolean
+          max_orders_per_day?: number | null
+          max_tables?: number | null
+          monthly_price?: number
+          name?: string
+          paddle_price_id?: string | null
+          paddle_setup_fee_price_id?: string | null
+          plan_type?: string
+          requires_city_match?: boolean
+          scan_menu_limit?: number | null
+          setup_fee?: number
+          support_level?: string
+        }
+        Relationships: []
+      }
       qr_codes: {
         Row: {
           business_id: string
@@ -533,65 +579,59 @@ export type Database = {
         }
         Relationships: []
       }
-      subscription_plans: {
+      subscriptions: {
         Row: {
+          business_id: string
           created_at: string
-          display_order: number
-          features: Json
-          has_analytics: boolean
-          has_custom_branding: boolean
-          has_whatsapp: boolean
+          current_period_end: string | null
           id: string
-          is_active: boolean
-          max_menu_items: number | null
-          max_orders_per_month: number | null
-          max_qr_codes: number | null
-          name: string
-          price_monthly: number
-          price_yearly: number
-          slug: string
-          stripe_price_id_monthly: string | null
-          stripe_price_id_yearly: string | null
+          paddle_customer_id: string | null
+          paddle_subscription_id: string | null
+          plan_type: string
+          status: string
+          trial_ends_at: string | null
+          updated_at: string
         }
         Insert: {
+          business_id: string
           created_at?: string
-          display_order?: number
-          features?: Json
-          has_analytics?: boolean
-          has_custom_branding?: boolean
-          has_whatsapp?: boolean
+          current_period_end?: string | null
           id?: string
-          is_active?: boolean
-          max_menu_items?: number | null
-          max_orders_per_month?: number | null
-          max_qr_codes?: number | null
-          name: string
-          price_monthly?: number
-          price_yearly?: number
-          slug: string
-          stripe_price_id_monthly?: string | null
-          stripe_price_id_yearly?: string | null
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
+          plan_type: string
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
         }
         Update: {
+          business_id?: string
           created_at?: string
-          display_order?: number
-          features?: Json
-          has_analytics?: boolean
-          has_custom_branding?: boolean
-          has_whatsapp?: boolean
+          current_period_end?: string | null
           id?: string
-          is_active?: boolean
-          max_menu_items?: number | null
-          max_orders_per_month?: number | null
-          max_qr_codes?: number | null
-          name?: string
-          price_monthly?: number
-          price_yearly?: number
-          slug?: string
-          stripe_price_id_monthly?: string | null
-          stripe_price_id_yearly?: string | null
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
+          plan_type?: string
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: true
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_plan_type_fkey"
+            columns: ["plan_type"]
+            isOneToOne: false
+            referencedRelation: "plan_configs"
+            referencedColumns: ["plan_type"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -656,9 +696,9 @@ export type Database = {
           is_active: boolean
           name: string
           owner_email: string
+          plan_type: string
           slug: string
-          subscription_plan_name: string
-          subscription_status: Database["public"]["Enums"]["subscription_status"]
+          subscription_status: string
           trial_ends_at: string
         }[]
       }
@@ -670,7 +710,8 @@ export type Database = {
         Args: {
           p_business_id: string
           p_current_period_end?: string
-          p_status: Database["public"]["Enums"]["subscription_status"]
+          p_plan_type: string
+          p_status: string
           p_trial_ends_at?: string
         }
         Returns: undefined
@@ -718,6 +759,10 @@ export type Database = {
           token_number: number
         }[]
       }
+      get_business_watermark: {
+        Args: { p_business_id: string }
+        Returns: boolean
+      }
       get_order_status: {
         Args: {
           p_business_slug: string
@@ -739,6 +784,18 @@ export type Database = {
           total_amount: number
         }[]
       }
+      get_plan_limits: {
+        Args: { p_business_id: string }
+        Returns: {
+          analytics_level: string
+          is_locked: boolean
+          max_orders_per_day: number
+          max_tables: number
+          plan_type: string
+          scan_menu_limit: number
+          status: string
+        }[]
+      }
       get_scan_usage: {
         Args: { p_business_id: string }
         Returns: {
@@ -757,6 +814,7 @@ export type Database = {
         Args: { _business_id: string; _user_id: string }
         Returns: boolean
       }
+      is_managed_setup_eligible: { Args: { p_city: string }; Returns: boolean }
       resolve_qr_code: {
         Args: { p_qr_id: string }
         Returns: {
@@ -777,7 +835,6 @@ export type Database = {
         | "completed"
         | "cancelled"
       order_type: "dine_in" | "takeaway"
-      subscription_status: "trial" | "active" | "past_due" | "canceled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -912,7 +969,6 @@ export const Constants = {
       notification_type: ["new_order", "order_ready", "order_completed"],
       order_status: ["pending", "preparing", "ready", "completed", "cancelled"],
       order_type: ["dine_in", "takeaway"],
-      subscription_status: ["trial", "active", "past_due", "canceled"],
     },
   },
 } as const

@@ -214,14 +214,14 @@ export function ScanMenuDialog({
           <div className="space-y-4">
             {usage && (
               <p className="text-xs text-muted-foreground text-center">
-                {usage.used} of {usage.limit} menu scans used this month
+                {usage.used} of {usage.limit} menu scans used on your trial
               </p>
             )}
             {usage && usage.used >= usage.limit ? (
               <Alert>
                 <TriangleAlert className="w-4 h-4" />
                 <AlertDescription>
-                  You've used all {usage.limit} menu scans for this month. Try again next month, or add items manually.
+                  You've used all {usage.limit} menu scans included in your trial. Upgrade to keep scanning, or add items manually.
                 </AlertDescription>
               </Alert>
             ) : (

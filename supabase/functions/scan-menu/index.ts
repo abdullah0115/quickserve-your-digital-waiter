@@ -20,8 +20,6 @@ const CORS_HEADERS = {
 
 const GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 
-const MONTHLY_SCAN_LIMIT = 20;
-const MONTHLY_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 const IP_BURST_LIMIT = 10;
 const IP_BURST_WINDOW_SECONDS = 60 * 60;
 
@@ -125,23 +123,37 @@ Deno.serve(async (req) => {
     return respond({ error: "Too many scan attempts — please wait a bit and try again." }, 429);
   }
 
-  // The real product limit — 20 scans per rolling 30 days, per user. Read
-  // (not incremented) here, so a Groq outage doesn't cost the user part of
-  // their quota for a scan that never actually happened — the quota is
-  // only recorded once Groq has actually responded, further down.
-  const monthlyBucket = `scan_menu:user:${userData.user.id}`;
-  const { count: scansUsed, error: usageErr } = await supabase
-    .from("rate_limit_hits")
-    .select("*", { count: "exact", head: true })
-    .eq("bucket_key", monthlyBucket)
-    .gte("created_at", new Date(Date.now() - MONTHLY_WINDOW_SECONDS * 1000).toISOString());
-  if (usageErr) throw usageErr;
-  if ((scansUsed ?? 0) >= MONTHLY_SCAN_LIMIT) {
-    return respond({
-      error: `You've used all ${MONTHLY_SCAN_LIMIT} menu scans for this month. Try again next month, or add items manually.`,
-      scans_used: MONTHLY_SCAN_LIMIT,
-      scans_limit: MONTHLY_SCAN_LIMIT,
-    }, 429);
+  // The real product limit is plan-driven — trial gets a lifetime cap
+  // (e.g. 3 scans total, not per month), paid plans have none
+  // (scan_menu_limit is NULL). Bucketed per-business, not per-user, so
+  // it caps the business's trial usage regardless of which staff
+  // account scans. Read (not incremented) here, so a Groq outage
+  // doesn't cost part of the quota for a scan that never actually
+  // happened — the quota is only recorded once Groq has responded.
+  const { data: planRow, error: planErr } = await supabase
+    .from("subscriptions")
+    .select("plan_configs(scan_menu_limit)")
+    .eq("business_id", business_id)
+    .single();
+  if (planErr) throw planErr;
+  const scanLimit = (planRow?.plan_configs as { scan_menu_limit: number | null } | null)?.scan_menu_limit ?? null;
+
+  const scanBucket = `scan_menu:business:${business_id}`;
+  let scansUsed = 0;
+  if (scanLimit !== null) {
+    const { count, error: usageErr } = await supabase
+      .from("rate_limit_hits")
+      .select("*", { count: "exact", head: true })
+      .eq("bucket_key", scanBucket);
+    if (usageErr) throw usageErr;
+    scansUsed = count ?? 0;
+    if (scansUsed >= scanLimit) {
+      return respond({
+        error: `You've used all ${scanLimit} menu scans included in your trial. Upgrade to keep scanning, or add items manually.`,
+        scans_used: scanLimit,
+        scans_limit: scanLimit,
+      }, 429);
+    }
   }
 
   const groqKey = Deno.env.get("GROQ_API_KEY");
@@ -199,9 +211,12 @@ Rules:
   }
 
   // Groq actually responded (cost was incurred) — record this against the
-  // user's monthly quota now, whatever happens with parsing below.
-  await supabase.from("rate_limit_hits").insert({ bucket_key: monthlyBucket });
-  const newScansUsed = (scansUsed ?? 0) + 1;
+  // business's quota now, whatever happens with parsing below. Only
+  // worth recording at all when there's an actual cap to count against.
+  if (scanLimit !== null) {
+    await supabase.from("rate_limit_hits").insert({ bucket_key: scanBucket });
+  }
+  const newScansUsed = scansUsed + 1;
 
   let groqJson: unknown;
   try {
@@ -218,7 +233,7 @@ Rules:
     return respond({ error: FRIENDLY_UNAVAILABLE }, 503);
   }
 
-  const usage = { scans_used: newScansUsed, scans_limit: MONTHLY_SCAN_LIMIT };
+  const usage = { scans_used: newScansUsed, scans_limit: scanLimit };
 
   let extracted: unknown;
   try {

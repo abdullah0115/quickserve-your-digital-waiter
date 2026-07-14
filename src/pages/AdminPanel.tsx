@@ -13,27 +13,36 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { SEO } from "@/components/SEO";
 
-type SubStatus = "trial" | "active" | "past_due" | "canceled";
+type SubStatus = "trialing" | "active" | "past_due" | "canceled" | "expired";
+type PlanType = "trial" | "self_serve_pkr" | "managed_pkr" | "international_usd";
 
 interface AdminBusiness {
   id: string;
   name: string;
   slug: string;
   owner_email: string;
+  plan_type: PlanType;
   subscription_status: SubStatus;
-  subscription_plan_name: string | null;
   trial_ends_at: string | null;
   current_period_end: string | null;
   is_active: boolean;
   created_at: string;
 }
 
-const STATUS_OPTIONS: SubStatus[] = ["trial", "active", "past_due", "canceled"];
+const STATUS_OPTIONS: SubStatus[] = ["trialing", "active", "past_due", "canceled", "expired"];
 const STATUS_COLOR: Record<SubStatus, string> = {
-  trial: "bg-muted text-muted-foreground",
+  trialing: "bg-muted text-muted-foreground",
   active: "bg-status-ready text-white",
   past_due: "bg-status-preparing text-white",
   canceled: "bg-destructive text-destructive-foreground",
+  expired: "bg-destructive text-destructive-foreground",
+};
+const PLAN_OPTIONS: PlanType[] = ["trial", "self_serve_pkr", "managed_pkr", "international_usd"];
+const PLAN_LABEL: Record<PlanType, string> = {
+  trial: "Free Trial",
+  self_serve_pkr: "Self-Serve (PKR)",
+  managed_pkr: "Managed Setup (PKR)",
+  international_usd: "International (USD)",
 };
 
 export default function AdminPanel() {
@@ -42,7 +51,7 @@ export default function AdminPanel() {
   const [businesses, setBusinesses] = useState<AdminBusiness[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Record<string, { status: SubStatus; trialEndsAt: string }>>({});
+  const [draft, setDraft] = useState<Record<string, { planType: PlanType; status: SubStatus; trialEndsAt: string }>>({});
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc("admin_list_businesses");
@@ -52,7 +61,11 @@ export default function AdminPanel() {
       Object.fromEntries(
         (data ?? []).map((b) => [
           b.id,
-          { status: b.subscription_status as SubStatus, trialEndsAt: b.trial_ends_at ? b.trial_ends_at.slice(0, 10) : "" },
+          {
+            planType: b.plan_type as PlanType,
+            status: b.subscription_status as SubStatus,
+            trialEndsAt: b.trial_ends_at ? b.trial_ends_at.slice(0, 10) : "",
+          },
         ])
       )
     );
@@ -72,6 +85,7 @@ export default function AdminPanel() {
     setSavingId(biz.id);
     const { error } = await supabase.rpc("admin_set_subscription", {
       p_business_id: biz.id,
+      p_plan_type: d.planType,
       p_status: d.status,
       p_trial_ends_at: d.trialEndsAt ? new Date(d.trialEndsAt).toISOString() : undefined,
     });
@@ -125,8 +139,9 @@ export default function AdminPanel() {
 
           <div className="space-y-3">
             {businesses.map((b) => {
-              const d = draft[b.id] ?? { status: b.subscription_status, trialEndsAt: "" };
-              const dirty = d.status !== b.subscription_status || (d.trialEndsAt && d.trialEndsAt !== (b.trial_ends_at?.slice(0, 10) ?? ""));
+              const d = draft[b.id] ?? { planType: b.plan_type, status: b.subscription_status, trialEndsAt: "" };
+              const dirty = d.planType !== b.plan_type || d.status !== b.subscription_status
+                || (d.trialEndsAt && d.trialEndsAt !== (b.trial_ends_at?.slice(0, 10) ?? ""));
               return (
                 <Card key={b.id} className={cnActive(b.is_active)}>
                   <CardContent className="p-5">
@@ -138,7 +153,7 @@ export default function AdminPanel() {
                           {!b.is_active && <Badge variant="outline" className="border-destructive text-destructive">suspended</Badge>}
                         </div>
                         <p className="text-sm text-muted-foreground mt-0.5">
-                          {b.owner_email} · /{b.slug} · {b.subscription_plan_name ?? "no plan"} · joined {format(new Date(b.created_at), "MMM d, yyyy")}
+                          {b.owner_email} · /{b.slug} · {PLAN_LABEL[b.plan_type] ?? b.plan_type} · joined {format(new Date(b.created_at), "MMM d, yyyy")}
                         </p>
                         <a
                           href={`/${b.slug}`}
@@ -156,6 +171,15 @@ export default function AdminPanel() {
                     </div>
 
                     <div className="flex flex-wrap items-end gap-3 mt-4 pt-4 border-t">
+                      <div>
+                        <label className="text-xs text-muted-foreground block mb-1">Plan</label>
+                        <Select value={d.planType} onValueChange={(v) => setDraft((prev) => ({ ...prev, [b.id]: { ...prev[b.id], planType: v as PlanType } }))}>
+                          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {PLAN_OPTIONS.map((p) => <SelectItem key={p} value={p}>{PLAN_LABEL[p]}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div>
                         <label className="text-xs text-muted-foreground block mb-1">Subscription status</label>
                         <Select value={d.status} onValueChange={(v) => setDraft((prev) => ({ ...prev, [b.id]: { ...prev[b.id], status: v as SubStatus } }))}>

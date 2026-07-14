@@ -33,6 +33,7 @@ export default function Menu() {
   const orderType = params.get("type") === "takeaway" ? "takeaway" : "dine_in";
 
   const [business, setBusiness] = useState<Business | null>(null);
+  const [showWatermark, setShowWatermark] = useState(false);
   const [qrCodeId, setQrCodeId] = useState<string | null>(null);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
   // Set when this table already has a pending/preparing order — switches
@@ -58,12 +59,14 @@ export default function Menu() {
       const { data: biz } = await supabase.from("businesses").select("id,name,slug").eq("slug", slug!).maybeSingle();
       if (!biz) { setLoading(false); return; }
       setBusiness(biz as Business);
-      const [c, i] = await Promise.all([
+      const [c, i, w] = await Promise.all([
         supabase.from("menu_categories").select("*").eq("business_id", biz.id).eq("is_active", true).order("display_order"),
         supabase.from("menu_items").select("*").eq("business_id", biz.id).order("display_order"),
+        supabase.rpc("get_business_watermark", { p_business_id: biz.id }),
       ]);
       setCats((c.data ?? []) as Cat[]);
       setItems((i.data ?? []) as unknown as Item[]);
+      setShowWatermark(!!w.data);
       setLoading(false);
     })();
   }, [slug]);
@@ -393,6 +396,13 @@ export default function Menu() {
             <div className="text-center py-20 text-muted-foreground">
               <UtensilsCrossed className="w-12 h-12 mx-auto mb-3 opacity-40" />
               <p>No items found</p>
+            </div>
+          )}
+          {showWatermark && (
+            <div className="text-center py-6">
+              <span className="inline-block text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
+                Powered by QuickWaiterz
+              </span>
             </div>
           )}
         </div>

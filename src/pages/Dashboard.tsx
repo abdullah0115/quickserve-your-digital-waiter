@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Coffee, LayoutDashboard, UtensilsCrossed, ClipboardList, QrCode as QrIcon,
   BarChart3, Settings, LogOut, Plus, Loader2, ChefHat, Bell, CheckCircle, Clock,
-  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck, Printer, ScanLine,
+  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck, Printer, ScanLine, TriangleAlert,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { QrPrintDialog } from "@/components/qr-print/QrPrintDialog";
@@ -27,6 +27,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { businessSettingsSchema, menuItemFormSchema, qrCodeFormSchema, firstZodError } from "@/lib/validation";
+import { useSubscriptionLimits, type PlanLimits, type SubscriptionUsage } from "@/hooks/useSubscriptionLimits";
 
 interface Business { id: string; name: string; slug: string; }
 interface Category { id: string; name: string; display_order: number; }
@@ -58,6 +59,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [liveCount, setLiveCount] = useState(0);
+  const { limits, usage: planUsage } = useSubscriptionLimits(business?.id);
 
   useEffect(() => {
     if (authLoading) return;
@@ -178,11 +180,27 @@ export default function Dashboard() {
           </div>
 
           <div className="p-6 lg:p-10 max-w-7xl mx-auto">
+            {limits?.isLocked && (
+              <div className="mb-6 flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4">
+                <TriangleAlert className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold text-destructive">Trial expired — upgrade to continue</div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Your dashboard and past orders are still here, but customers can't place new online orders until you upgrade.
+                  </p>
+                </div>
+                <a href="/pricing" target="_blank" rel="noreferrer">
+                  <Button size="sm" className="bg-primary hover:bg-primary-hover text-primary-foreground shrink-0">
+                    View plans
+                  </Button>
+                </a>
+              </div>
+            )}
             {tab === "overview" && <Overview business={business} />}
             {tab === "orders" && <OrdersKDS business={business} />}
             {tab === "menu" && <MenuManager business={business} />}
-            {tab === "qr" && <QrManager business={business} />}
-            {tab === "analytics" && <Analytics business={business} />}
+            {tab === "qr" && <QrManager business={business} limits={limits} usage={planUsage} />}
+            {tab === "analytics" && <Analytics business={business} limits={limits} />}
             {tab === "settings" && <SettingsPanel business={business} onUpdate={setBusiness} />}
           </div>
         </main>
@@ -558,8 +576,9 @@ function MenuManager({ business }: { business: Business }) {
   );
 }
 
-function QrManager({ business }: { business: Business }) {
+function QrManager({ business, limits, usage }: { business: Business; limits: PlanLimits | null; usage: SubscriptionUsage | null }) {
   const [codes, setCodes] = useState<QrCode[]>([]);
+  const atTableLimit = !!limits?.maxTables && (usage?.tablesUsed ?? codes.length) >= limits.maxTables;
   const [tableNum, setTableNum] = useState("");
   const [label, setLabel] = useState("");
   const [printTarget, setPrintTarget] = useState<QrCode | null>(null);
@@ -643,6 +662,17 @@ function QrManager({ business }: { business: Business }) {
           </div>
         </div>
       </CardContent></Card>
+      {atTableLimit && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-accent/40 bg-accent/10 p-4">
+          <TriangleAlert className="w-5 h-5 text-accent shrink-0" />
+          <div className="flex-1 text-sm">
+            Your plan allows up to <strong>{limits?.maxTables}</strong> tables. Upgrade to add more.
+          </div>
+          <a href="/pricing" target="_blank" rel="noreferrer">
+            <Button size="sm" variant="outline">View plans</Button>
+          </a>
+        </div>
+      )}
       <Card className="mb-6"><CardContent className="p-5 space-y-4">
         <div>
           <div className="text-xs font-medium text-muted-foreground mb-2">Add one table</div>
@@ -717,9 +747,19 @@ function QrManager({ business }: { business: Business }) {
   );
 }
 
-function Analytics({ business }: { business: Business }) {
+function Analytics({ business, limits }: { business: Business; limits: PlanLimits | null }) {
   const [data, setData] = useState<Array<{ date: string; orders: number; revenue: number }>>([]);
+  const [todayCount, setTodayCount] = useState<number | null>(null);
+  const isTodayOnly = limits?.analyticsLevel === "today_only";
+
   useEffect(() => {
+    if (isTodayOnly) {
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      supabase.from("orders").select("id", { count: "exact", head: true })
+        .eq("business_id", business.id).gte("created_at", todayStart.toISOString()).neq("status", "cancelled")
+        .then(({ count }) => setTodayCount(count ?? 0));
+      return;
+    }
     (async () => {
       const since = new Date(); since.setDate(since.getDate() - 7);
       const { data: orders } = await supabase.from("orders").select("created_at,total_amount")
@@ -736,7 +776,33 @@ function Analytics({ business }: { business: Business }) {
       });
       setData(Array.from(map.entries()).map(([date, v]) => ({ date, ...v })));
     })();
-  }, [business.id]);
+  }, [business.id, isTodayOnly]);
+
+  if (isTodayOnly) {
+    return (
+      <div>
+        <div className="mb-6">
+          <h1 className="font-display text-3xl font-bold">Analytics</h1>
+          <p className="text-muted-foreground mt-1">Today</p>
+        </div>
+        <Card className="max-w-sm">
+          <CardContent className="p-5">
+            <div className="text-xs text-muted-foreground">Today's Orders</div>
+            <div className="font-mono text-3xl font-bold mt-1">{todayCount ?? "—"}</div>
+          </CardContent>
+        </Card>
+        <div className="mt-6 flex items-center gap-3 rounded-xl border border-accent/40 bg-accent/10 p-4 max-w-lg">
+          <TriangleAlert className="w-5 h-5 text-accent shrink-0" />
+          <div className="flex-1 text-sm">
+            Upgrade for full analytics — revenue, daily trends, peak hours and top-selling items.
+          </div>
+          <a href="/pricing" target="_blank" rel="noreferrer">
+            <Button size="sm" variant="outline">View plans</Button>
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   const total = data.reduce((s, d) => s + d.revenue, 0);
   const orderTotal = data.reduce((s, d) => s + d.orders, 0);
