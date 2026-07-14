@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ export default function Onboarding() {
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
   const [city, setCity] = useState("");
+  const [country, setCountry] = useState<"Pakistan" | "International">("Pakistan");
   const [cuisine, setCuisine] = useState("Cafe");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,7 +40,7 @@ export default function Onboarding() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    const parsed = onboardingSchema.safeParse({ name, tagline, city, cuisine, phone });
+    const parsed = onboardingSchema.safeParse({ name, tagline, city, country, cuisine, phone });
     if (!parsed.success) return toast.error(firstZodError(parsed));
     setLoading(true);
     try {
@@ -61,6 +63,7 @@ export default function Onboarding() {
           slug,
           tagline,
           city,
+          country,
           cuisine_type: cuisine,
           phone,
           email: user.email,
@@ -128,13 +131,24 @@ export default function Onboarding() {
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
+                    <Label htmlFor="country">Country *</Label>
+                    <Select value={country} onValueChange={(v) => setCountry(v as "Pakistan" | "International")}>
+                      <SelectTrigger id="country" className="mt-1.5"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Pakistan">Pakistan</SelectItem>
+                        <SelectItem value="International">International</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1.5">Decides which pricing plans and currency you'll see.</p>
+                  </div>
+                  <div>
                     <Label htmlFor="city">City</Label>
                     <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Karachi" className="mt-1.5" />
                   </div>
-                  <div>
-                    <Label htmlFor="cuisine">Cuisine</Label>
-                    <Input id="cuisine" value={cuisine} onChange={(e) => setCuisine(e.target.value)} placeholder="Cafe" className="mt-1.5" />
-                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="cuisine">Cuisine</Label>
+                  <Input id="cuisine" value={cuisine} onChange={(e) => setCuisine(e.target.value)} placeholder="Cafe" className="mt-1.5" />
                 </div>
                 <div>
                   <Label htmlFor="phone">Phone</Label>

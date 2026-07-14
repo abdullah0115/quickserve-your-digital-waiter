@@ -1,46 +1,98 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, Crown, ArrowRight, Building2, Sparkles } from "lucide-react";
+import { Check, MapPin, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SEO } from "@/components/SEO";
 import { MarketingNav, MarketingFooter } from "@/components/marketing/MarketingShell";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
-interface Plan {
-  id: string;
+type Region = "Pakistan" | "International";
+
+interface PlanConfig {
+  plan_type: string;
   name: string;
-  slug: string;
-  price_monthly: number;
-  price_yearly: number;
+  currency: string | null;
+  monthly_price: number;
+  setup_fee: number;
   features: string[];
+  requires_city_match: boolean;
   display_order: number;
 }
 
+// Which plan_type shows under each region toggle. Trial is region-independent
+// (it's the same everywhere) so it's shown in both.
+const REGION_PLANS: Record<Region, string[]> = {
+  Pakistan: ["trial", "self_serve_pkr", "managed_pkr"],
+  International: ["trial", "international_usd"],
+};
+
 export default function Pricing() {
-  const [period, setPeriod] = useState<"monthly" | "yearly">("monthly");
-  const [plans, setPlans] = useState<Plan[]>([]);
+  const { user } = useAuth();
+  const [plans, setPlans] = useState<PlanConfig[]>([]);
+  const [region, setRegion] = useState<Region>("Pakistan");
+  const [managedEligible, setManagedEligible] = useState(true); // true = show without a caveat until we know otherwise
 
   useEffect(() => {
     supabase
-      .from("subscription_plans")
+      .from("plan_configs")
       .select("*")
       .eq("is_active", true)
       .order("display_order")
       .then(({ data }) => {
-        if (data) setPlans(data as unknown as Plan[]);
+        if (data) setPlans(data as unknown as PlanConfig[]);
       });
   }, []);
 
-  const getPrice = (p: Plan) => (period === "monthly" ? p.price_monthly : Math.round(p.price_yearly / 12));
-  const isPopular = (slug: string) => slug === "starter";
+  // If a logged-in business owner is viewing this to upgrade, default the
+  // region toggle to where their business actually is, and check their real
+  // city against the Managed Setup coverage list — otherwise (anonymous
+  // visitor, no business yet) the toggle defaults to Pakistan and Managed
+  // Setup is shown with a "Karachi only" note rather than a hard guess.
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const { data: biz } = await supabase
+        .from("businesses")
+        .select("country, city")
+        .eq("owner_id", user.id)
+        .limit(1)
+        .maybeSingle();
+      if (!biz) return;
+      if (biz.country && biz.country !== "Pakistan") setRegion("International");
+      if (biz.city) {
+        const { data: eligible } = await supabase.rpc("is_managed_setup_eligible", { p_city: biz.city });
+        setManagedEligible(!!eligible);
+      }
+    })();
+  }, [user]);
+
+  const visiblePlans = REGION_PLANS[region]
+    .map((type) => plans.find((p) => p.plan_type === type))
+    .filter((p): p is PlanConfig => !!p);
+
+  const formatPrice = (p: PlanConfig) => {
+    if (p.plan_type === "trial") return "Free";
+    const symbol = p.currency === "USD" ? "$" : "PKR ";
+    return `${symbol}${p.monthly_price.toLocaleString()}`;
+  };
+
+  const trialFollowUpPrice = () => {
+    const followUp = region === "Pakistan"
+      ? plans.find((p) => p.plan_type === "self_serve_pkr")
+      : plans.find((p) => p.plan_type === "international_usd");
+    if (!followUp) return null;
+    const symbol = followUp.currency === "USD" ? "$" : "PKR ";
+    return `${symbol}${followUp.monthly_price.toLocaleString()}/mo`;
+  };
 
   return (
     <>
       <SEO
         title="Pricing — QuickWaiterz"
-        description="Simple, transparent pricing for restaurants and cafes of every size. Start free for 14 days. No credit card required."
+        description="Simple, transparent pricing for restaurants and cafes. 14-day free trial, then Self-Serve, Managed Setup, or International plans."
       />
       <div className="min-h-screen bg-background">
         <MarketingNav />
@@ -55,47 +107,47 @@ export default function Pricing() {
               Pricing that scales with you
             </h1>
             <p className="mt-5 text-lg text-muted-foreground max-w-xl mx-auto">
-              Start free. Upgrade as you grow. No hidden fees, no surprises — ever.
+              14-day free trial, then {trialFollowUpPrice() ?? "a plan that fits"}. No hidden fees.
             </p>
 
             <div className="mt-10 inline-flex items-center bg-muted rounded-full p-1.5 border">
               <button
-                onClick={() => setPeriod("monthly")}
+                onClick={() => setRegion("Pakistan")}
                 className={cn(
                   "px-5 py-2 rounded-full text-sm font-medium transition",
-                  period === "monthly" ? "bg-background shadow-soft text-foreground" : "text-muted-foreground"
+                  region === "Pakistan" ? "bg-background shadow-soft text-foreground" : "text-muted-foreground"
                 )}
               >
-                Monthly
+                Pakistan (PKR)
               </button>
               <button
-                onClick={() => setPeriod("yearly")}
+                onClick={() => setRegion("International")}
                 className={cn(
-                  "px-5 py-2 rounded-full text-sm font-medium transition flex items-center gap-2",
-                  period === "yearly" ? "bg-background shadow-soft text-foreground" : "text-muted-foreground"
+                  "px-5 py-2 rounded-full text-sm font-medium transition",
+                  region === "International" ? "bg-background shadow-soft text-foreground" : "text-muted-foreground"
                 )}
               >
-                Yearly
-                <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground">Save 17%</span>
+                International (USD)
               </button>
             </div>
           </motion.div>
         </section>
 
         <section className="container mx-auto px-4 lg:px-8 pb-16">
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
-            {plans.map((plan, i) => {
-              const popular = isPopular(plan.slug);
-              const isEnt = plan.slug === "enterprise";
+          <div className={cn("grid gap-6 max-w-5xl mx-auto", region === "Pakistan" ? "md:grid-cols-3" : "md:grid-cols-2 max-w-3xl")}>
+            {visiblePlans.map((plan, i) => {
+              const isTrial = plan.plan_type === "trial";
+              const isManaged = plan.plan_type === "managed_pkr";
+              const popular = plan.plan_type === "self_serve_pkr";
               return (
                 <motion.div
-                  key={plan.id}
+                  key={plan.plan_type}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.07 }}
                   className={cn(
                     "relative rounded-3xl border bg-card p-7 flex flex-col",
-                    popular && "border-accent shadow-warm scale-[1.02] lg:scale-105 ring-1 ring-accent/20",
+                    popular && "border-accent shadow-warm scale-[1.02] ring-1 ring-accent/20",
                   )}
                 >
                   {popular && (
@@ -104,30 +156,32 @@ export default function Pricing() {
                     </div>
                   )}
                   <div className="mb-5">
-                    {isEnt && <Crown className="w-5 h-5 text-accent mb-2" />}
                     <h3 className="font-display text-xl font-bold">{plan.name}</h3>
-                  </div>
-
-                  <div className="mb-6">
-                    {isEnt ? (
-                      <div className="font-display text-3xl font-bold">Custom</div>
-                    ) : plan.price_monthly === 0 && plan.slug === "free" ? (
-                      <>
-                        <div className="font-mono text-4xl font-bold">PKR 0</div>
-                        <div className="text-sm text-muted-foreground mt-1">14-day trial</div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-baseline gap-1">
-                          <span className="font-mono text-4xl font-bold">PKR {getPrice(plan).toLocaleString()}</span>
-                          <span className="text-muted-foreground text-sm">/mo</span>
-                        </div>
-                        {period === "yearly" && (
-                          <div className="text-xs text-secondary mt-1">Billed PKR {plan.price_yearly.toLocaleString()}/year</div>
-                        )}
-                      </>
+                    {isManaged && (
+                      <div className="inline-flex items-center gap-1 text-xs text-secondary mt-1.5">
+                        <MapPin className="w-3 h-3" /> Karachi & select cities only
+                      </div>
                     )}
                   </div>
+
+                  <div className="mb-2">
+                    <div className="flex items-baseline gap-1">
+                      <span className="font-mono text-4xl font-bold">{formatPrice(plan)}</span>
+                      {!isTrial && <span className="text-muted-foreground text-sm">/mo</span>}
+                    </div>
+                    {isTrial && <div className="text-sm text-muted-foreground mt-1">14 days, no credit card</div>}
+                    {isManaged && plan.setup_fee > 0 && (
+                      <div className="text-xs text-secondary mt-1">
+                        + PKR {plan.setup_fee.toLocaleString()} one-time setup fee
+                      </div>
+                    )}
+                  </div>
+                  {!isTrial && (
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Taxes may apply and will be calculated at checkout.
+                    </p>
+                  )}
+                  {isTrial && <div className="mb-4" />}
 
                   <ul className="space-y-3 mb-8 flex-1">
                     {(plan.features ?? []).map((f) => (
@@ -138,34 +192,33 @@ export default function Pricing() {
                     ))}
                   </ul>
 
-                  <Link to={isEnt ? "#" : "/auth?mode=signup"}>
+                  <Link to="/auth?mode=signup">
                     <Button
                       className={cn(
                         "w-full",
                         popular
                           ? "bg-primary hover:bg-primary-hover text-primary-foreground"
-                          : isEnt
-                          ? "bg-foreground hover:bg-foreground/90 text-background"
                           : "bg-card border border-border text-foreground hover:bg-muted"
                       )}
                     >
-                      {isEnt ? "Contact Sales" : plan.slug === "free" ? "Start Free Trial" : "Get Started"}
-                      <ArrowRight className="ml-2 w-4 h-4" />
+                      {isTrial ? "Start Free Trial" : "Get Started"}
                     </Button>
                   </Link>
+                  {isManaged && !managedEligible && (
+                    <p className="text-xs text-destructive mt-2 text-center">
+                      Managed Setup isn't available in your city yet — you can still use Self-Serve.
+                    </p>
+                  )}
                 </motion.div>
               );
             })}
           </div>
 
-          <div className="mt-16 max-w-4xl mx-auto rounded-3xl bg-gradient-coffee p-10 text-center text-primary-foreground">
-            <Building2 className="w-10 h-10 mx-auto mb-4 text-accent" />
-            <h3 className="font-display text-2xl font-bold mb-3">Need something more?</h3>
-            <p className="text-primary-foreground/80 mb-6 max-w-xl mx-auto">
-              Multi-location chains, custom integrations, and white-label options. Let's talk.
+          {region === "Pakistan" && (
+            <p className="text-center text-sm text-muted-foreground mt-8">
+              Not in Karachi? You can still use the Self-Serve plan anywhere in Pakistan — just print your own QR codes.
             </p>
-            <Button className="bg-accent hover:bg-accent-hover text-accent-foreground">Contact Sales</Button>
-          </div>
+          )}
         </section>
 
         <MarketingFooter />
