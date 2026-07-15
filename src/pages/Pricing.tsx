@@ -91,8 +91,8 @@ export default function Pricing() {
   return (
     <>
       <SEO
-        title="Pricing — QuickWaiterz"
-        description="Simple, transparent pricing for restaurants and cafes. 14-day free trial, then Self-Serve, Managed Setup, or International plans."
+        title="Pricing — QuickWaiterz QR Ordering System"
+        description="Simple pricing for QuickWaiterz's QR code menu ordering software: a 14-day free trial, then Pakistan (PKR) or international (USD) plans for restaurants."
       />
       <div className="min-h-screen bg-background">
         <MarketingNav />

@@ -48,8 +48,8 @@ export default function Home() {
   return (
     <>
       <SEO
-        title="QuickWaiters — Smart Restaurant Queue & QR Ordering System"
-        description="Eliminate the queue, elevate the experience. QuickWaiters is the modern QR ordering and kitchen display platform designed for cafes and restaurants."
+        title="QuickWaiterz — QR Code Menu & Ordering for Restaurants"
+        description="QuickWaiterz is a QR code menu ordering system for restaurants and cafes — contactless ordering, live kitchen display, and real-time order tracking."
         image={heroImg}
       />
       <div className="min-h-screen bg-background">

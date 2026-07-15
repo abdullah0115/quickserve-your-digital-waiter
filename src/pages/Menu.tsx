@@ -18,7 +18,10 @@ import { checkoutFormSchema, firstZodError } from "@/lib/validation";
 import { addOrderToHistory } from "@/lib/orderHistory";
 import { useMyOrders, ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/useMyOrders";
 
-interface Business { id: string; name: string; slug: string; }
+interface Business {
+  id: string; name: string; slug: string;
+  cover_image_url: string | null; cuisine_type: string | null; city: string | null;
+}
 interface Cat { id: string; name: string; display_order: number; }
 interface Item {
   id: string; name: string; description: string | null; price: number;
@@ -56,7 +59,7 @@ export default function Menu() {
 
   useEffect(() => {
     (async () => {
-      const { data: biz } = await supabase.from("businesses").select("id,name,slug").eq("slug", slug!).maybeSingle();
+      const { data: biz } = await supabase.from("businesses").select("id,name,slug,cover_image_url,cuisine_type,city").eq("slug", slug!).maybeSingle();
       if (!biz) { setLoading(false); return; }
       setBusiness(biz as Business);
       const [c, i, w] = await Promise.all([
@@ -213,7 +216,12 @@ export default function Menu() {
 
   return (
     <>
-      <SEO title={`Menu — ${business.name}`} description={`Order from ${business.name}`} />
+      <SEO
+        title={`${business.name} Menu — Order Online | QuickWaiterz`}
+        description={`Order from ${business.name}${business.cuisine_type ? ` — ${business.cuisine_type} cuisine` : ""}${business.city ? ` in ${business.city}` : ""}. Browse the digital menu and place a contactless QR code order online.`}
+        image={business.cover_image_url ?? undefined}
+        type="restaurant"
+      />
       <div className="min-h-screen bg-background pb-32">
         {/* Header */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b">
