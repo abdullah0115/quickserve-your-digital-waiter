@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'hero-cafe.jpg', 'feature-qr.jpg'],
+      includeAssets: ['favicon.png', 'hero-cafe.jpg', 'feature-qr.jpg'],
       
       manifest: {
         name: 'QuickWaiterz - Restaurant Queue Management',
