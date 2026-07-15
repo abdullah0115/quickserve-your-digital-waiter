@@ -1,7 +1,7 @@
 import { SEO } from "@/components/SEO";
 import { MarketingNav, MarketingFooter } from "@/components/marketing/MarketingShell";
 
-const LAST_UPDATED = "July 14, 2026";
+const LAST_UPDATED = "July 15, 2026";
 const CONTACT_EMAIL = "QuickWaiterz@gmail.com";
 
 export default function Refund() {
@@ -36,11 +36,13 @@ export default function Refund() {
           </section>
 
           <section>
-            <h2 className="font-display text-xl font-semibold mb-2">2. No refunds on paid subscriptions</h2>
+            <h2 className="font-display text-xl font-semibold mb-2">2. 14-day refund window</h2>
             <p>
-              Because you can evaluate the Service risk-free during the trial, payments for
-              paid subscription plans are non-refundable once a billing period has started —
-              including partial months or unused time if you cancel partway through a period.
+              In line with standard consumer cancellation rights, you can request a full refund
+              on a paid subscription payment within 14 days of that charge (your initial payment
+              or a renewal) — no questions asked. Contact us within that window and we'll refund
+              it. After 14 days, that payment becomes non-refundable, though you can still cancel
+              at any time to stop future billing.
             </p>
           </section>
 
@@ -49,8 +51,9 @@ export default function Refund() {
             <p>
               You can cancel your subscription at any time by contacting us. Cancelling stops
               future billing — you keep access to your paid plan until the end of the billing
-              period you've already paid for, after which your account moves to the free plan.
-              We don't charge cancellation fees.
+              period you've already paid for (or receive a refund for it if you're still within
+              the 14-day window above), after which your account moves to the free plan. We
+              don't charge cancellation fees.
             </p>
           </section>
 
