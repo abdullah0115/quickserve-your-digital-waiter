@@ -156,7 +156,7 @@ export default function Pricing() {
                     </div>
                   )}
                   <div className="mb-5">
-                    <h3 className="font-display text-xl font-bold">{plan.name}</h3>
+                    <h2 className="font-display text-xl font-bold">{plan.name}</h2>
                     {isManaged && (
                       <div className="inline-flex items-center gap-1 text-xs text-secondary mt-1.5">
                         <MapPin className="w-3 h-3" /> Karachi & select cities only

@@ -123,6 +123,24 @@ export default function Menu() {
     return true;
   }), [items, selectedCat, search]);
 
+  // Grouped by category (in the business's own display_order) so the page
+  // has a real H1 restaurant name -> H2 category -> H3 item heading
+  // hierarchy, instead of a flat list of item names with no structure.
+  const grouped = useMemo(() => {
+    const byCategory = new Map<string, { name: string; items: Item[] }>();
+    for (const it of filtered) {
+      const key = it.category_id ?? "uncategorized";
+      if (!byCategory.has(key)) {
+        const name = it.category_id ? cats.find((c) => c.id === it.category_id)?.name ?? "Menu" : "Menu";
+        byCategory.set(key, { name, items: [] });
+      }
+      byCategory.get(key)!.items.push(it);
+    }
+    const ordered = cats.filter((c) => byCategory.has(c.id)).map((c) => byCategory.get(c.id)!);
+    if (byCategory.has("uncategorized")) ordered.push(byCategory.get("uncategorized")!);
+    return ordered;
+  }, [filtered, cats]);
+
   const placeOrder = async () => {
     if (!business || cart.items.length === 0) return;
     const parsed = checkoutFormSchema.safeParse(checkout);
@@ -364,41 +382,48 @@ export default function Menu() {
 
         {/* Items */}
         <div className="container mx-auto px-4 py-6">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((it) => {
-              const inCart = cart.items.find((c) => c.id === it.id);
-              return (
-                <motion.div key={it.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={cn("rounded-2xl border bg-card overflow-hidden", !it.is_available && "opacity-50")}>
-                  <div className="relative">
-                    {it.image_url ? (
-                      <img src={it.image_url} alt={it.name} className="w-full aspect-4/3 object-cover" />
-                    ) : (
-                      <div className="w-full aspect-4/3 bg-gradient-warm flex items-center justify-center"><UtensilsCrossed className="w-10 h-10 text-accent-foreground" /></div>
-                    )}
-                    {it.is_featured && <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground"><Star className="w-3 h-3 mr-0.5 fill-current" />Popular</Badge>}
-                    {!it.is_available && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><span className="bg-card px-3 py-1 rounded-full text-sm font-medium">Out of stock</span></div>}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-display font-semibold mb-1">{it.name}</h3>
-                    {it.description && <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{it.description}</p>}
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-lg font-bold text-secondary">PKR {Number(it.price).toLocaleString()}</span>
-                      {inCart ? (
-                        <div className="flex items-center gap-1">
-                          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => cart.updateQuantity(it.id, -1)}><Minus className="w-3 h-3" /></Button>
-                          <span className="w-7 text-center font-mono">{inCart.quantity}</span>
-                          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => cart.updateQuantity(it.id, 1)}><Plus className="w-3 h-3" /></Button>
+          <div className="space-y-8">
+            {grouped.map((g) => (
+              <section key={g.name}>
+                <h2 className="font-display text-xl font-bold mb-4">{g.name}</h2>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {g.items.map((it) => {
+                    const inCart = cart.items.find((c) => c.id === it.id);
+                    return (
+                      <motion.div key={it.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={cn("rounded-2xl border bg-card overflow-hidden", !it.is_available && "opacity-50")}>
+                        <div className="relative">
+                          {it.image_url ? (
+                            <img src={it.image_url} alt={it.name} className="w-full aspect-4/3 object-cover" />
+                          ) : (
+                            <div className="w-full aspect-4/3 bg-gradient-warm flex items-center justify-center"><UtensilsCrossed className="w-10 h-10 text-accent-foreground" /></div>
+                          )}
+                          {it.is_featured && <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground"><Star className="w-3 h-3 mr-0.5 fill-current" />Popular</Badge>}
+                          {!it.is_available && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><span className="bg-card px-3 py-1 rounded-full text-sm font-medium">Out of stock</span></div>}
                         </div>
-                      ) : (
-                        <Button size="sm" disabled={!it.is_available} onClick={() => cart.addItem(business.id, { id: it.id, name: it.name, price: Number(it.price), image_url: it.image_url })} className="bg-primary text-primary-foreground">
-                          <Plus className="w-3 h-3 mr-1" /> Add
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
+                        <div className="p-4">
+                          <h3 className="font-display font-semibold mb-1">{it.name}</h3>
+                          {it.description && <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{it.description}</p>}
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-lg font-bold text-secondary">PKR {Number(it.price).toLocaleString()}</span>
+                            {inCart ? (
+                              <div className="flex items-center gap-1">
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => cart.updateQuantity(it.id, -1)}><Minus className="w-3 h-3" /></Button>
+                                <span className="w-7 text-center font-mono">{inCart.quantity}</span>
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => cart.updateQuantity(it.id, 1)}><Plus className="w-3 h-3" /></Button>
+                              </div>
+                            ) : (
+                              <Button size="sm" disabled={!it.is_available} onClick={() => cart.addItem(business.id, { id: it.id, name: it.name, price: Number(it.price), image_url: it.image_url })} className="bg-primary text-primary-foreground">
+                                <Plus className="w-3 h-3 mr-1" /> Add
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
           {filtered.length === 0 && (
             <div className="text-center py-20 text-muted-foreground">

@@ -99,7 +99,7 @@ const planCard = (p) => {
   const isTrial = p.plan_type === "trial";
   const features = Array.isArray(p.features) ? p.features : [];
   return `<article>
-    <h3>${esc(p.name)}</h3>
+    <h2>${esc(p.name)}</h2>
     <p><strong>${esc(formatPrice(p))}${isTrial ? "" : "/mo"}</strong></p>
     ${isTrial ? "<p>14 days, no credit card</p>" : "<p>Taxes may apply and will be calculated at checkout.</p>"}
     ${p.setup_fee > 0 ? `<p>+ PKR ${Number(p.setup_fee).toLocaleString()} one-time setup fee</p>` : ""}
@@ -129,7 +129,7 @@ writeFileSync(resolve(root, "dist/pricing/index.html"), pricingHtml);
 
 let homeHtml = template.replace(
   ROOT_DIV,
-  `<div id="root"><main data-prerendered="home"><p>${esc(heroLine)} <a href="/pricing">Full pricing</a>.</p></main></div>`,
+  `<div id="root"><main data-prerendered="home"><h1>QuickWaiterz — QR Code Menu &amp; Ordering for Restaurants</h1><p>${esc(heroLine)} <a href="/pricing">Full pricing</a>.</p></main></div>`,
 );
 homeHtml = injectHead(homeHtml, buildHead({
   title: "QuickWaiterz — QR Code Menu & Ordering for Restaurants",
