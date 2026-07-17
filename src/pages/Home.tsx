@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, QrCode, Monitor, Smartphone, BarChart3, Zap, Lock, Play, Check, Sparkles, ShieldCheck, KeyRound, Database, Radar } from "lucide-react";
@@ -5,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { SEO } from "@/components/SEO";
 import { MarketingNav, MarketingFooter } from "@/components/marketing/MarketingShell";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { SITE_URL } from "@/lib/site";
 import heroImg from "@/assets/hero-cafe.jpg";
 import featureImg from "@/assets/feature-qr.jpg";
 
@@ -45,12 +48,44 @@ export default function Home() {
   const navigate = useNavigate();
   const ctaHref = user ? "/dashboard" : "/auth?mode=signup";
 
+  // Sourced from the same plan_configs table Pricing.tsx reads, rather than
+  // hardcoded here, so this structured data can't silently drift out of
+  // sync with the real price shown at checkout — that mismatch is exactly
+  // what got this site's Paddle domain rejected the first time.
+  const [homePlans, setHomePlans] = useState<{ plan_type: string; monthly_price: number; currency: string }[]>([]);
+  useEffect(() => {
+    supabase
+      .from("plan_configs")
+      .select("plan_type,monthly_price,currency")
+      .eq("is_active", true)
+      .in("plan_type", ["self_serve_pkr", "international_usd"])
+      .then(({ data }) => setHomePlans((data as typeof homePlans) ?? []));
+  }, []);
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "QuickWaiterz",
+    description: "QR code menu ordering and kitchen display system for restaurants and cafes.",
+    applicationCategory: "Restaurant Management Software",
+    operatingSystem: "Web",
+    ...(homePlans.length > 0 && {
+      offers: homePlans.map((p) => ({
+        "@type": "Offer",
+        price: String(p.monthly_price),
+        priceCurrency: p.currency,
+        url: `${SITE_URL}/pricing`,
+      })),
+    }),
+  };
+
   return (
     <>
       <SEO
         title="QuickWaiterz — QR Code Menu & Ordering for Restaurants"
         description="QuickWaiterz is a QR code menu ordering system for restaurants and cafes — contactless ordering, live kitchen display, and real-time order tracking."
         image={heroImg}
+        jsonLd={jsonLd}
       />
       <div className="min-h-screen bg-background">
         <MarketingNav />

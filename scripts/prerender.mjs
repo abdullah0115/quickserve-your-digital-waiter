@@ -76,18 +76,23 @@ const findAsset = (prefix) => {
   return match ? `${SITE_URL}/assets/${match}` : null;
 };
 
-const buildHead = ({ title, description, path, image }) => `<title>${esc(title)}</title>
-    <meta name="description" content="${esc(description)}" />
-    <meta property="og:title" content="${esc(title)}" />
-    <meta property="og:description" content="${esc(description)}" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="${SITE_URL}${path}" />
-    <meta property="og:image" content="${image ?? DEFAULT_OG_IMAGE}" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${esc(title)}" />
-    <meta name="twitter:description" content="${esc(description)}" />
-    <meta name="twitter:image" content="${image ?? DEFAULT_OG_IMAGE}" />
-    <link rel="canonical" href="${SITE_URL}${path}" />`;
+// Every tag except <title> carries data-prerendered so src/components/SEO.tsx
+// can sweep them off routes that fall back to serving this same file but
+// render a different page client-side (see SEO.tsx for why <title> is
+// deliberately left unmarked and untouched by that sweep).
+const buildHead = ({ title, description, path, image, jsonLd }) => `<title>${esc(title)}</title>
+    <meta data-prerendered="true" name="description" content="${esc(description)}" />
+    <meta data-prerendered="true" property="og:title" content="${esc(title)}" />
+    <meta data-prerendered="true" property="og:description" content="${esc(description)}" />
+    <meta data-prerendered="true" property="og:type" content="website" />
+    <meta data-prerendered="true" property="og:url" content="${SITE_URL}${path}" />
+    <meta data-prerendered="true" property="og:image" content="${image ?? DEFAULT_OG_IMAGE}" />
+    <meta data-prerendered="true" name="twitter:card" content="summary_large_image" />
+    <meta data-prerendered="true" name="twitter:title" content="${esc(title)}" />
+    <meta data-prerendered="true" name="twitter:description" content="${esc(description)}" />
+    <meta data-prerendered="true" name="twitter:image" content="${image ?? DEFAULT_OG_IMAGE}" />
+    <link data-prerendered="true" rel="canonical" href="${SITE_URL}${path}" />${jsonLd ? `
+    <script data-prerendered="true" type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ""}`;
 
 const injectHead = (html, headContent) =>
   html.replace(/<title>.*?<\/title>/s, "").replace("</head>", `${headContent}\n  </head>`);
@@ -136,7 +141,58 @@ homeHtml = injectHead(homeHtml, buildHead({
   description: "QuickWaiterz is a QR code menu ordering system for restaurants and cafes — contactless ordering, live kitchen display, and real-time order tracking.",
   path: "/",
   image: heroImage,
+  jsonLd: {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "QuickWaiterz",
+    description: "QR code menu ordering and kitchen display system for restaurants and cafes.",
+    applicationCategory: "Restaurant Management Software",
+    operatingSystem: "Web",
+    ...((selfServe || intl) && {
+      offers: [selfServe, intl].filter(Boolean).map((p) => ({
+        "@type": "Offer",
+        price: String(p.monthly_price),
+        priceCurrency: p.currency,
+        url: `${SITE_URL}/pricing`,
+      })),
+    }),
+  },
 }));
 writeFileSync(resolve(root, "dist/index.html"), homeHtml);
 
-console.log("prerender: wrote dist/index.html and dist/pricing/index.html with static pricing content and head meta tags");
+// --- sitemap.xml ---
+// Static marketing pages plus every active business's public pages
+// (landing + menu) — dynamic, so this is generated at build time rather
+// than living as a static file in public/. robots.txt (static, no
+// per-business content) lives in public/ and is copied by Vite as-is.
+const STATIC_PAGES = [
+  { path: "/", priority: "1.0" },
+  { path: "/pricing", priority: "0.9" },
+  { path: "/privacy", priority: "0.3" },
+  { path: "/terms", priority: "0.3" },
+  { path: "/refund", priority: "0.3" },
+];
+
+const bizRes = await fetch(
+  `${SUPABASE_URL}/rest/v1/businesses?select=slug,updated_at&is_active=eq.true`,
+  { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } },
+);
+const businesses = bizRes.ok ? await bizRes.json() : [];
+if (!bizRes.ok) console.warn(`prerender: failed to fetch businesses for sitemap (status ${bizRes.status}) — sitemap will only include static pages.`);
+
+const today = new Date().toISOString().slice(0, 10);
+const urlEntry = (path, lastmod, priority) =>
+  `  <url><loc>${SITE_URL}${path}</loc><lastmod>${lastmod}</lastmod><priority>${priority}</priority></url>`;
+
+const staticEntries = STATIC_PAGES.map((p) => urlEntry(p.path, today, p.priority));
+const bizEntries = businesses.flatMap((b) => {
+  const lastmod = (b.updated_at ?? today).slice(0, 10);
+  return [urlEntry(`/${b.slug}`, lastmod, "0.6"), urlEntry(`/${b.slug}/menu`, lastmod, "0.6")];
+});
+
+writeFileSync(
+  resolve(root, "dist/sitemap.xml"),
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${[...staticEntries, ...bizEntries].join("\n")}\n</urlset>\n`,
+);
+
+console.log(`prerender: wrote dist/index.html and dist/pricing/index.html with static pricing content and head meta tags, dist/sitemap.xml with ${STATIC_PAGES.length + bizEntries.length} URLs`);

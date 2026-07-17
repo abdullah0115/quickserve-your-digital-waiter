@@ -13,6 +13,7 @@ import { useCart } from "@/store/cart";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { SEO } from "@/components/SEO";
+import { SITE_URL } from "@/lib/site";
 import { cn } from "@/lib/utils";
 import { checkoutFormSchema, firstZodError } from "@/lib/validation";
 import { addOrderToHistory } from "@/lib/orderHistory";
@@ -20,7 +21,7 @@ import { useMyOrders, ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/
 
 interface Business {
   id: string; name: string; slug: string;
-  cover_image_url: string | null; cuisine_type: string | null; city: string | null;
+  cover_image_url: string | null; cuisine_type: string | null; city: string | null; address: string | null;
 }
 interface Cat { id: string; name: string; display_order: number; }
 interface Item {
@@ -59,7 +60,7 @@ export default function Menu() {
 
   useEffect(() => {
     (async () => {
-      const { data: biz } = await supabase.from("businesses").select("id,name,slug,cover_image_url,cuisine_type,city").eq("slug", slug!).maybeSingle();
+      const { data: biz } = await supabase.from("businesses").select("id,name,slug,cover_image_url,cuisine_type,city,address").eq("slug", slug!).maybeSingle();
       if (!biz) { setLoading(false); return; }
       setBusiness(biz as Business);
       const [c, i, w] = await Promise.all([
@@ -232,6 +233,17 @@ export default function Menu() {
   const cartCount = cart.count();
   const cartTotal = cart.total();
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Restaurant",
+    name: business.name,
+    servesCuisine: business.cuisine_type ?? undefined,
+    address: business.address
+      ? { "@type": "PostalAddress", streetAddress: business.address, addressLocality: business.city ?? undefined }
+      : undefined,
+    hasMenu: `${SITE_URL}/${business.slug}/menu`,
+  };
+
   return (
     <>
       <SEO
@@ -239,6 +251,7 @@ export default function Menu() {
         description={`Order from ${business.name}${business.cuisine_type ? ` — ${business.cuisine_type} cuisine` : ""}${business.city ? ` in ${business.city}` : ""}. Browse the digital menu and place a contactless QR code order online.`}
         image={business.cover_image_url ?? undefined}
         type="restaurant"
+        jsonLd={jsonLd}
       />
       <div className="min-h-screen bg-background pb-32">
         {/* Header */}
