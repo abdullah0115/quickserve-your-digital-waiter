@@ -81,21 +81,22 @@ export function MarketingFooter() {
           </p>
         </div>
         <div>
-          <h4 className="font-semibold mb-3 text-sm">Product</h4>
+          <h3 className="font-semibold mb-3 text-sm">Product</h3>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li><Link to="/pricing" className="hover:text-foreground">Pricing</Link></li>
             <li><a href="#features" className="hover:text-foreground">Features</a></li>
           </ul>
         </div>
         <div>
-          <h4 className="font-semibold mb-3 text-sm">Company</h4>
+          <h3 className="font-semibold mb-3 text-sm">Company</h3>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li><a href="#" className="hover:text-foreground">About</a></li>
             <li><a href="#" className="hover:text-foreground">Contact</a></li>
+            <li><Link to="/blog" className="hover:text-foreground">Blog</Link></li>
           </ul>
         </div>
         <div>
-          <h4 className="font-semibold mb-3 text-sm">Legal</h4>
+          <h3 className="font-semibold mb-3 text-sm">Legal</h3>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li><Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
             <li><Link to="/terms" className="hover:text-foreground">Terms of Service</Link></li>

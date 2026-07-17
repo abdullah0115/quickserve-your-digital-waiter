@@ -91,8 +91,8 @@ export default function Pricing() {
   return (
     <>
       <SEO
-        title="Pricing — QuickWaiterz"
-        description="Simple, transparent pricing for restaurants and cafes. 14-day free trial, then Self-Serve, Managed Setup, or International plans."
+        title="Pricing — QuickWaiterz QR Ordering System"
+        description="Simple pricing for QuickWaiterz's QR code menu ordering software: a 14-day free trial, then Pakistan (PKR) or international (USD) plans for restaurants."
       />
       <div className="min-h-screen bg-background">
         <MarketingNav />
@@ -156,7 +156,7 @@ export default function Pricing() {
                     </div>
                   )}
                   <div className="mb-5">
-                    <h3 className="font-display text-xl font-bold">{plan.name}</h3>
+                    <h2 className="font-display text-xl font-bold">{plan.name}</h2>
                     {isManaged && (
                       <div className="inline-flex items-center gap-1 text-xs text-secondary mt-1.5">
                         <MapPin className="w-3 h-3" /> Karachi & select cities only

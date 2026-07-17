@@ -14,6 +14,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Refund = lazy(() => import("./pages/Refund"));
+const Blog = lazy(() => import("./pages/Blog"));
 const BusinessLanding = lazy(() => import("./pages/BusinessLanding"));
 const Menu = lazy(() => import("./pages/Menu"));
 const OrderStatus = lazy(() => import("./pages/OrderStatus"));
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/refund" element={<Refund />} />
+        <Route path="/blog" element={<Blog />} />
         <Route path="/:slug" element={<BusinessLanding />} />
         <Route path="/:slug/menu" element={<Menu />} />
         <Route path="/:slug/order/:token" element={<OrderStatus />} />
