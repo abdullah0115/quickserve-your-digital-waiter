@@ -44,7 +44,7 @@ export default defineConfig({
       },
       
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg,woff,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,webp,svg,woff,woff2}'],
         
         runtimeCaching: [
           {
@@ -59,7 +59,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif)$/i,
+            urlPattern: /\.(?:png|jpg|jpeg|webp|svg|gif)$/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'images-cache',

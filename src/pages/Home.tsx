@@ -9,7 +9,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { SITE_URL } from "@/lib/site";
 import heroImg from "@/assets/hero-cafe.jpg";
+import heroImgWebp from "@/assets/hero-cafe.webp";
 import featureImg from "@/assets/feature-qr.jpg";
+import featureImgWebp from "@/assets/feature-qr.webp";
 
 const features = [
   { icon: QrCode, title: "QR Code Ordering", description: "Customers scan, order, and track — all from their phone. Zero app downloads required." },
@@ -135,13 +137,17 @@ export default function Home() {
                 className="relative"
               >
                 <div className="absolute -inset-6 bg-gradient-warm opacity-20 blur-3xl rounded-full" />
-                <img
-                  src={heroImg}
-                  alt="Modern cafe interior with friendly barista"
-                  width={1600}
-                  height={1200}
-                  className="relative rounded-3xl shadow-warm w-full h-auto object-cover aspect-4/3"
-                />
+                <picture>
+                  <source srcSet={heroImgWebp} type="image/webp" />
+                  <img
+                    src={heroImg}
+                    alt="Modern cafe interior with friendly barista"
+                    width={1600}
+                    height={1200}
+                    fetchPriority="high"
+                    className="relative rounded-3xl shadow-warm w-full h-auto object-cover aspect-4/3"
+                  />
+                </picture>
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -217,14 +223,17 @@ export default function Home() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
             >
-              <img
-                src={featureImg}
-                loading="lazy"
-                alt="QR ordering on phone with coffee and pastry"
-                width={1200}
-                height={1200}
-                className="rounded-3xl shadow-warm w-full"
-              />
+              <picture>
+                <source srcSet={featureImgWebp} type="image/webp" />
+                <img
+                  src={featureImg}
+                  loading="lazy"
+                  alt="QR ordering on phone with coffee and pastry"
+                  width={1200}
+                  height={1200}
+                  className="rounded-3xl shadow-warm w-full"
+                />
+              </picture>
             </motion.div>
             <motion.div
               initial={{ opacity: 0, x: 30 }}
