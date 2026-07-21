@@ -16,10 +16,10 @@ import featureImgWebp from "@/assets/feature-qr.webp";
 const features = [
   { icon: QrCode, title: "QR Code Ordering", description: "Customers scan, order, and track — all from their phone. Zero app downloads required." },
   { icon: Monitor, title: "Live Kitchen Display", description: "Real-time order queue with status updates. Your staff stays perfectly in sync." },
-  { icon: Smartphone, title: "Smart Notifications", description: "WhatsApp alerts when orders are ready. No more shouting across the counter." },
+  { icon: Smartphone, title: "Live Order Status", description: "Customers get real-time order updates with a sound alert the moment it's ready — right on their phone, no app or WhatsApp needed." },
   { icon: BarChart3, title: "Sales Analytics", description: "Track daily revenue, bestsellers, and peak hours. Grow your business with data." },
   { icon: Zap, title: "Lightning Fast", description: "Orders appear instantly. Updates in real-time. Built for high-traffic rushes." },
-  { icon: Lock, title: "Secure & Reliable", description: "Enterprise-grade security. 99.9% uptime guaranteed. Your data is always safe." },
+  { icon: Lock, title: "Secure & Reliable", description: "Strict, database-level access controls keep every business's orders and data completely isolated from every other." },
 ];
 
 const securityPoints = [
