@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ShoppingCart, ClipboardList, Search, Plus, Minus, Trash2, Star, UtensilsCrossed, Loader2, Check } from "lucide-react";
+import { ArrowLeft, ShoppingCart, ClipboardList, Search, Plus, Minus, Trash2, Star, UtensilsCrossed, Loader2, Check, WifiOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,16 +18,8 @@ import { cn } from "@/lib/utils";
 import { checkoutFormSchema, firstZodError } from "@/lib/validation";
 import { addOrderToHistory } from "@/lib/orderHistory";
 import { useMyOrders, ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/useMyOrders";
-
-interface Business {
-  id: string; name: string; slug: string;
-  cover_image_url: string | null; cuisine_type: string | null; city: string | null; address: string | null;
-}
-interface Cat { id: string; name: string; display_order: number; }
-interface Item {
-  id: string; name: string; description: string | null; price: number;
-  category_id: string | null; image_url: string | null; is_available: boolean; is_featured: boolean;
-}
+import { useOfflineOrderQueue } from "@/hooks/useOfflineOrderQueue";
+import { useOfflineMenu, type Item } from "@/hooks/useOfflineMenu";
 
 export default function Menu() {
   const { slug } = useParams();
@@ -36,7 +28,10 @@ export default function Menu() {
   const qrParam = params.get("qr");
   const orderType = params.get("type") === "takeaway" ? "takeaway" : "dine_in";
 
-  const [business, setBusiness] = useState<Business | null>(null);
+  const {
+    business, menuItems: items, categories: cats,
+    isLoading: loading, isOnline: isMenuOnline, isFromCache,
+  } = useOfflineMenu(slug ?? "");
   const [showWatermark, setShowWatermark] = useState(false);
   const [qrCodeId, setQrCodeId] = useState<string | null>(null);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
@@ -44,11 +39,8 @@ export default function Menu() {
   // the cart into "add to order" mode instead of "place order" so 2-3
   // people scanning the same QR can each contribute to one shared order.
   const [existingOrder, setExistingOrder] = useState<{ id: string; token_number: number } | null>(null);
-  const [cats, setCats] = useState<Cat[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("all");
-  const [loading, setLoading] = useState(true);
   const [cartOpen, setCartOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [checkout, setCheckout] = useState({ name: "", phone: "", notes: "" });
@@ -58,22 +50,13 @@ export default function Menu() {
   const activeOrders = myOrders.filter((o) => ACTIVE_ORDER_STATUSES.has(o.status));
   const latestActive = activeOrders[0];
 
+  // Non-critical branding detail — skip silently rather than block the
+  // page if it fails (e.g. offline, no cached value for it).
   useEffect(() => {
-    (async () => {
-      const { data: biz } = await supabase.from("businesses").select("id,name,slug,cover_image_url,cuisine_type,city,address").eq("slug", slug!).maybeSingle();
-      if (!biz) { setLoading(false); return; }
-      setBusiness(biz as Business);
-      const [c, i, w] = await Promise.all([
-        supabase.from("menu_categories").select("*").eq("business_id", biz.id).eq("is_active", true).order("display_order"),
-        supabase.from("menu_items").select("*").eq("business_id", biz.id).order("display_order"),
-        supabase.rpc("get_business_watermark", { p_business_id: biz.id }),
-      ]);
-      setCats((c.data ?? []) as Cat[]);
-      setItems((i.data ?? []) as unknown as Item[]);
-      setShowWatermark(!!w.data);
-      setLoading(false);
-    })();
-  }, [slug]);
+    if (!business) return;
+    supabase.rpc("get_business_watermark", { p_business_id: business.id })
+      .then(({ data }) => setShowWatermark(!!data), () => {});
+  }, [business]);
 
   // Resolve the table number server-side from the scanned QR code's id —
   // never trust a table number typed straight into the URL. An invalid,
@@ -118,6 +101,21 @@ export default function Menu() {
 
   useEffect(() => { checkExistingOrder(); }, [checkExistingOrder]);
 
+  const { pendingOrder, isSyncing, queueOrder, cancelPendingOrder } = useOfflineOrderQueue(slug, {
+    onSynced: (order) => {
+      addOrderToHistory(slug!, { id: order.id, tokenNumber: order.token_number });
+      toast.success(`Order #${order.token_number} sent to the kitchen!`);
+      navigate(`/${slug}/order/${order.token_number}?id=${order.id}`);
+    },
+    onConflict: () => {
+      checkExistingOrder();
+      toast.info("Someone else already started an order for this table — add your items to it below.");
+    },
+    onExpired: () => {
+      toast.error("Couldn't send your order — please check your connection and try again.");
+    },
+  });
+
   const filtered = useMemo(() => items.filter((it) => {
     if (selectedCat !== "all" && it.category_id !== selectedCat) return false;
     if (search && !it.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -144,6 +142,7 @@ export default function Menu() {
 
   const placeOrder = async () => {
     if (!business || cart.items.length === 0) return;
+    if (pendingOrder) return toast.error("You already have an order waiting to send — cancel it first to start a new one.");
     const parsed = checkoutFormSchema.safeParse(checkout);
     if (!parsed.success) return toast.error(firstZodError(parsed));
     setPlacing(true);
@@ -170,7 +169,31 @@ export default function Menu() {
       toast.success(`Order #${order.token_number} placed!`);
       navigate(`/${slug}/order/${order.token_number}?id=${order.id}`);
     } catch (err) {
+      // A real connectivity failure (request never reached the server) —
+      // as opposed to the server responding with a business-rule rejection
+      // (invalid item, rate limit, etc.) — is the only case worth queueing.
+      // Retrying a business-rule rejection would just fail the same way
+      // every time, so those still surface as a normal error toast.
+      const isNetworkFailure = !navigator.onLine || (err instanceof Error && err.name === "FunctionsFetchError");
       const msg = err instanceof Error ? err.message : "Failed to place order";
+
+      if (isNetworkFailure) {
+        await queueOrder({
+          businessId: business.id,
+          businessSlug: slug!,
+          qrCodeId,
+          customerName: checkout.name,
+          customerPhone: checkout.phone || undefined,
+          items: cart.items.map((i) => ({ menuItemId: i.id, name: i.name, price: i.price, quantity: i.quantity })),
+          orderType,
+          notes: checkout.notes || undefined,
+        });
+        cart.clear();
+        setCartOpen(false);
+        toast.info("You're offline — we'll send your order to the kitchen as soon as you're back online.");
+        return;
+      }
+
       // Race: another phone at this table created the order between us
       // loading the page and submitting ours. Recover into add-mode
       // instead of leaving the customer at a dead end.
@@ -185,6 +208,7 @@ export default function Menu() {
 
   const addToOrder = async () => {
     if (!business || !existingOrder || cart.items.length === 0) return;
+    if (pendingOrder) return toast.error("You already have an order waiting to send — cancel it first to start a new one.");
     const parsed = checkoutFormSchema.safeParse(checkout);
     if (!parsed.success) return toast.error(firstZodError(parsed));
     setPlacing(true);
@@ -228,7 +252,26 @@ export default function Menu() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div>;
-  if (!business) return <div className="min-h-screen flex items-center justify-center"><p>Business not found</p></div>;
+  if (!business) {
+    // Distinguish "genuinely no such business" from "offline and nothing
+    // cached yet for this one" (e.g. first-ever visit with no connectivity)
+    // — the latter isn't a dead end, it resolves itself once reconnected.
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-2 text-center px-4">
+        {isMenuOnline ? (
+          <p>Business not found</p>
+        ) : (
+          <>
+            <WifiOff className="w-6 h-6 text-muted-foreground" />
+            <p className="font-medium">You're offline</p>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              We don't have this menu saved yet — please reconnect and reload the page.
+            </p>
+          </>
+        )}
+      </div>
+    );
+  }
 
   const cartCount = cart.count();
   const cartTotal = cart.total();
@@ -256,6 +299,24 @@ export default function Menu() {
       <div className="min-h-screen bg-background pb-32">
         {/* Header */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b">
+          {pendingOrder && (
+            <div className="bg-muted text-foreground border-b">
+              <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium inline-flex items-center gap-2">
+                  {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <WifiOff className="w-3.5 h-3.5" />}
+                  Sending your order — we'll keep trying until you're back online.
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2"
+                  onClick={() => { cancelPendingOrder(); toast.info("Order cancelled."); }}
+                >
+                  <X className="w-3.5 h-3.5 mr-1" /> Cancel
+                </Button>
+              </div>
+            </div>
+          )}
           {latestActive && (
             <div className="bg-accent text-accent-foreground">
               <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm">
@@ -325,6 +386,11 @@ export default function Menu() {
               </SheetTrigger>
               <SheetContent className="w-full sm:max-w-md flex flex-col">
                 <SheetHeader><SheetTitle className="font-display">Your Order</SheetTitle></SheetHeader>
+                {pendingOrder && (
+                  <div className="bg-muted border rounded-lg px-3 py-2 text-xs text-foreground">
+                    You have an order still waiting to send — cancel it (banner above) before starting a new one.
+                  </div>
+                )}
                 {existingOrder && (
                   <div className="bg-accent/10 border border-accent/30 rounded-lg px-3 py-2 text-xs text-foreground">
                     This table already has an active order <strong>#{existingOrder.token_number}</strong> — your items will be added to it.
@@ -358,7 +424,7 @@ export default function Menu() {
                     <div className="flex justify-between text-lg font-semibold py-2">
                       <span>Total</span><span className="font-mono">PKR {cartTotal.toLocaleString()}</span>
                     </div>
-                    <Button onClick={existingOrder ? addToOrder : placeOrder} disabled={placing} size="lg" className="w-full bg-secondary hover:bg-secondary-hover text-secondary-foreground">
+                    <Button onClick={existingOrder ? addToOrder : placeOrder} disabled={placing || !!pendingOrder} size="lg" className="w-full bg-secondary hover:bg-secondary-hover text-secondary-foreground">
                       {placing ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : existingOrder ? (

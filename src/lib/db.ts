@@ -1,32 +1,27 @@
 import Dexie, { Table } from 'dexie'
 
+// One queued order per business per device at a time (enforced by callers,
+// not the schema) — created when a real submit attempt fails for network
+// reasons while the customer is mid-order. `items`/`estimatedTotal` are for
+// showing the customer what they're waiting to send; the server always
+// recomputes the real total from live menu prices on sync, same as a normal
+// online order — nothing here is ever trusted as authoritative.
 export interface PendingOrder {
   id?: number
   localId: string
   businessId: string
   businessSlug: string
-  tokenNumber: number
-  customerName?: string
+  qrCodeId: string | null
+  customerName: string
   customerPhone?: string
-  items: any[]
-  totalAmount: number
-  status: string
-  tableNumber?: string
+  items: Array<{ menuItemId: string; name: string; price: number; quantity: number; notes?: string }>
+  estimatedTotal: number
   orderType: 'dine_in' | 'takeaway'
   notes?: string
   createdAt: number
   synced: boolean
-  syncAttempts: number // Track retry attempts
+  syncAttempts: number
   lastSyncAttempt?: number
-}
-
-export interface OrderQueue {
-  id?: number
-  orderId: string
-  priority: number // 1 = highest
-  status: 'pending' | 'processing' | 'completed' | 'failed'
-  createdAt: number
-  processedAt?: number
 }
 
 export interface CachedMenu {
@@ -59,17 +54,30 @@ export interface LocalNotification {
 
 class QuickWaiterzDB extends Dexie {
   pendingOrders!: Table<PendingOrder, number>
-  orderQueue!: Table<OrderQueue, number>
   cachedMenu!: Table<CachedMenu, number>
   cachedBusiness!: Table<CachedBusiness, number>
   localNotifications!: Table<LocalNotification, number>
 
   constructor() {
     super('QuickWaiterzDB')
-    
+
+    // v2 also had an `orderQueue` store from an earlier, unshipped attempt
+    // at this feature — dead (its only writer was deleted, nothing ever
+    // wrote a row to it, and pendingOrders' own `synced`/`syncAttempts`
+    // fields already cover what it tracked). localNotifications is real —
+    // useNotifications.ts reads/writes it as an offline fallback cache —
+    // so it's carried forward unchanged.
     this.version(2).stores({
       pendingOrders: '++id, localId, businessSlug, synced, createdAt, syncAttempts',
       orderQueue: '++id, orderId, status, priority, createdAt',
+      cachedMenu: '++id, businessSlug, cachedAt',
+      cachedBusiness: '++id, businessSlug, cachedAt',
+      localNotifications: '++id, type, isRead, createdAt',
+    })
+
+    this.version(3).stores({
+      pendingOrders: '++id, localId, businessSlug, synced, createdAt, syncAttempts',
+      orderQueue: null,
       cachedMenu: '++id, businessSlug, cachedAt',
       cachedBusiness: '++id, businessSlug, cachedAt',
       localNotifications: '++id, type, isRead, createdAt',
@@ -79,67 +87,45 @@ class QuickWaiterzDB extends Dexie {
 
 export const db = new QuickWaiterzDB()
 
-// Enhanced Helper Functions
+// Offline order queue
 
-export async function savePendingOrder(order: Omit<PendingOrder, 'id' | 'synced' | 'createdAt' | 'syncAttempts'>) {
-  const orderId = await db.pendingOrders.add({
+export async function queueOfflineOrder(order: Omit<PendingOrder, 'id' | 'synced' | 'createdAt' | 'syncAttempts'>) {
+  return db.pendingOrders.add({
     ...order,
     synced: false,
     createdAt: Date.now(),
     syncAttempts: 0,
   })
-  
-  // Add to queue with high priority
-  await db.orderQueue.add({
-    orderId: order.localId,
-    priority: 1,
-    status: 'pending',
-    createdAt: Date.now(),
-  })
-  
-  return orderId
 }
 
-export async function getPendingOrders(businessSlug?: string) {
-  let orders = await db.pendingOrders
-    .where('synced')
-    .equals(0)
-    .toArray()
-  
-  if (businessSlug) {
-    orders = orders.filter(o => o.businessSlug === businessSlug)
-  }
-  
-  // Sort by priority (newest first, then by sync attempts)
-  return orders.sort((a, b) => {
-    if (a.syncAttempts !== b.syncAttempts) {
-      return a.syncAttempts - b.syncAttempts // Less attempts = higher priority
-    }
-    return b.createdAt - a.createdAt // Newer first
-  })
-}
-
-export async function markOrderSynced(localId: string) {
-  await db.pendingOrders
-    .where('localId')
-    .equals(localId)
-    .modify({ synced: true })
-  
-  await db.orderQueue
-    .where('orderId')
-    .equals(localId)
-    .modify({ status: 'completed', processedAt: Date.now() })
+// One business + one device = at most one pending order, so this is a
+// point lookup, not a list — simpler for callers than reasoning about which
+// of several to show.
+export async function getPendingOrder(businessSlug: string) {
+  return (
+    (await db.pendingOrders
+      .where('businessSlug')
+      .equals(businessSlug)
+      .and((o) => !o.synced)
+      .first()) ?? null
+  )
 }
 
 export async function incrementSyncAttempts(localId: string) {
-  const order = await db.pendingOrders.where('localId').equals(localId).first()
-  if (order) {
-    await db.pendingOrders.update(order.id!, {
-      syncAttempts: (order.syncAttempts || 0) + 1,
-      lastSyncAttempt: Date.now(),
-    })
-  }
+  await db.pendingOrders.where('localId').equals(localId).modify((o) => {
+    o.syncAttempts += 1
+    o.lastSyncAttempt = Date.now()
+  })
 }
+
+// Called once the order has actually reached the server — at that point
+// there's nothing left to retry, so the row is removed rather than kept
+// around marked `synced: true` (no UI ever lists past queued orders).
+export async function deletePendingOrder(localId: string) {
+  await db.pendingOrders.where('localId').equals(localId).delete()
+}
+
+// Local notification cache (offline fallback for useNotifications.ts)
 
 export async function addLocalNotification(notification: Omit<LocalNotification, 'id' | 'isRead' | 'createdAt'>) {
   return await db.localNotifications.add({
@@ -157,19 +143,16 @@ export async function getUnreadNotifications() {
     .sortBy('createdAt')
 }
 
-export async function markNotificationRead(id: number) {
-  return await db.localNotifications.update(id, { isRead: true })
-}
+// Menu cache functions
 
-// Menu cache functions remain same
 export async function cacheMenu(businessSlug: string, menuData: any, categoriesData: any) {
   const now = Date.now()
-  
+
   await db.cachedMenu
     .where('businessSlug')
     .equals(businessSlug)
     .delete()
-  
+
   return await db.cachedMenu.add({
     businessSlug,
     menuData,
@@ -184,14 +167,14 @@ export async function getCachedMenu(businessSlug: string) {
     .where('businessSlug')
     .equals(businessSlug)
     .first()
-  
+
   if (!cached) return null
-  
+
   if (Date.now() > cached.expiresAt) {
     await db.cachedMenu.delete(cached.id!)
     return null
   }
-  
+
   return {
     menuItems: cached.menuData,
     categories: cached.categoriesData,
@@ -200,12 +183,12 @@ export async function getCachedMenu(businessSlug: string) {
 
 export async function cacheBusiness(businessSlug: string, businessData: any) {
   const now = Date.now()
-  
+
   await db.cachedBusiness
     .where('businessSlug')
     .equals(businessSlug)
     .delete()
-  
+
   return await db.cachedBusiness.add({
     businessSlug,
     businessData,
@@ -219,13 +202,13 @@ export async function getCachedBusiness(businessSlug: string) {
     .where('businessSlug')
     .equals(businessSlug)
     .first()
-  
+
   if (!cached) return null
-  
+
   if (Date.now() > cached.expiresAt) {
     await db.cachedBusiness.delete(cached.id!)
     return null
   }
-  
+
   return cached.businessData
 }
