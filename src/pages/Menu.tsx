@@ -19,16 +19,7 @@ import { checkoutFormSchema, firstZodError } from "@/lib/validation";
 import { addOrderToHistory } from "@/lib/orderHistory";
 import { useMyOrders, ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/useMyOrders";
 import { useOfflineOrderQueue } from "@/hooks/useOfflineOrderQueue";
-
-interface Business {
-  id: string; name: string; slug: string;
-  cover_image_url: string | null; cuisine_type: string | null; city: string | null; address: string | null;
-}
-interface Cat { id: string; name: string; display_order: number; }
-interface Item {
-  id: string; name: string; description: string | null; price: number;
-  category_id: string | null; image_url: string | null; is_available: boolean; is_featured: boolean;
-}
+import { useOfflineMenu, type Item } from "@/hooks/useOfflineMenu";
 
 export default function Menu() {
   const { slug } = useParams();
@@ -37,7 +28,10 @@ export default function Menu() {
   const qrParam = params.get("qr");
   const orderType = params.get("type") === "takeaway" ? "takeaway" : "dine_in";
 
-  const [business, setBusiness] = useState<Business | null>(null);
+  const {
+    business, menuItems: items, categories: cats,
+    isLoading: loading, isOnline: isMenuOnline, isFromCache,
+  } = useOfflineMenu(slug ?? "");
   const [showWatermark, setShowWatermark] = useState(false);
   const [qrCodeId, setQrCodeId] = useState<string | null>(null);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
@@ -45,11 +39,8 @@ export default function Menu() {
   // the cart into "add to order" mode instead of "place order" so 2-3
   // people scanning the same QR can each contribute to one shared order.
   const [existingOrder, setExistingOrder] = useState<{ id: string; token_number: number } | null>(null);
-  const [cats, setCats] = useState<Cat[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("all");
-  const [loading, setLoading] = useState(true);
   const [cartOpen, setCartOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [checkout, setCheckout] = useState({ name: "", phone: "", notes: "" });
@@ -59,22 +50,13 @@ export default function Menu() {
   const activeOrders = myOrders.filter((o) => ACTIVE_ORDER_STATUSES.has(o.status));
   const latestActive = activeOrders[0];
 
+  // Non-critical branding detail — skip silently rather than block the
+  // page if it fails (e.g. offline, no cached value for it).
   useEffect(() => {
-    (async () => {
-      const { data: biz } = await supabase.from("businesses").select("id,name,slug,cover_image_url,cuisine_type,city,address").eq("slug", slug!).maybeSingle();
-      if (!biz) { setLoading(false); return; }
-      setBusiness(biz as Business);
-      const [c, i, w] = await Promise.all([
-        supabase.from("menu_categories").select("*").eq("business_id", biz.id).eq("is_active", true).order("display_order"),
-        supabase.from("menu_items").select("*").eq("business_id", biz.id).order("display_order"),
-        supabase.rpc("get_business_watermark", { p_business_id: biz.id }),
-      ]);
-      setCats((c.data ?? []) as Cat[]);
-      setItems((i.data ?? []) as unknown as Item[]);
-      setShowWatermark(!!w.data);
-      setLoading(false);
-    })();
-  }, [slug]);
+    if (!business) return;
+    supabase.rpc("get_business_watermark", { p_business_id: business.id })
+      .then(({ data }) => setShowWatermark(!!data), () => {});
+  }, [business]);
 
   // Resolve the table number server-side from the scanned QR code's id —
   // never trust a table number typed straight into the URL. An invalid,
@@ -270,7 +252,26 @@ export default function Menu() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div>;
-  if (!business) return <div className="min-h-screen flex items-center justify-center"><p>Business not found</p></div>;
+  if (!business) {
+    // Distinguish "genuinely no such business" from "offline and nothing
+    // cached yet for this one" (e.g. first-ever visit with no connectivity)
+    // — the latter isn't a dead end, it resolves itself once reconnected.
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-2 text-center px-4">
+        {isMenuOnline ? (
+          <p>Business not found</p>
+        ) : (
+          <>
+            <WifiOff className="w-6 h-6 text-muted-foreground" />
+            <p className="font-medium">You're offline</p>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              We don't have this menu saved yet — please reconnect and reload the page.
+            </p>
+          </>
+        )}
+      </div>
+    );
+  }
 
   const cartCount = cart.count();
   const cartTotal = cart.total();
