@@ -51,9 +51,29 @@ export function useNotifications(userId?: string, businessId?: string) {
       }
 
       // 2. Offline Mode Cache Fallback (IndexedDB)
+      //
+      // LocalNotification (src/lib/db.ts) uses camelCase fields with a
+      // numeric `createdAt` — a different shape than the NotificationRow
+      // rows the online query above returns (snake_case, `created_at` as
+      // an ISO string). Mapping explicitly here instead of casting avoids
+      // handing the UI a `created_at: undefined`, which made
+      // `format(new Date(...))` throw and crash the dashboard.
       if (getUnreadNotifications) {
         const localNotifs = await getUnreadNotifications()
-        setNotifications(localNotifs as unknown as NotificationRow[])
+        setNotifications(
+          localNotifs.map((n) => ({
+            id: String(n.id ?? n.createdAt),
+            user_id: userId ?? null,
+            business_id: businessId ?? null,
+            title: n.title,
+            message: n.message,
+            type: n.type,
+            is_read: n.isRead,
+            order_id: n.orderId ?? null,
+            data: n.tokenNumber != null ? { token_number: n.tokenNumber } : null,
+            created_at: new Date(n.createdAt).toISOString(),
+          }))
+        )
         setUnreadCount(localNotifs.length)
       }
     } catch (error) {
