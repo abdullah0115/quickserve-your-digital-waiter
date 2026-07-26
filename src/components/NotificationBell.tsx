@@ -13,6 +13,16 @@ import {
 import { format } from 'date-fns'
 import { unlockNotificationAudio } from '@/lib/notificationSound'
 
+// date-fns' format() throws (not returns a placeholder) on an invalid Date,
+// which would otherwise crash the whole dashboard over a single bad
+// timestamp — this is the one thing standing between a notification-source
+// bug and every staff member seeing "Something went wrong" mid-rush.
+function formatNotifDate(createdAt: string) {
+  const date = new Date(createdAt)
+  if (Number.isNaN(date.getTime())) return ''
+  return format(date, 'MMM d, h:mm a')
+}
+
 export function NotificationBell() {
   const { businessId } = useAuth()
   const { notifications, unreadCount, markAsRead, requestPermission } = useNotifications(undefined, businessId ?? undefined)
@@ -76,7 +86,7 @@ export function NotificationBell() {
                     {notif.message}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {format(new Date(notif.created_at), 'MMM d, h:mm a')}
+                    {formatNotifDate(notif.created_at)}
                   </p>
                 </div>
               </DropdownMenuItem>
