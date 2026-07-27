@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from "uuid";
 import { supabase } from "@/integrations/supabase/client";
 
 const BUCKET = "menu-images";
@@ -32,7 +33,11 @@ async function resizeToBlob(file: File, maxDim = 1200, quality = 0.82): Promise<
 // landing in the caller's own business's folder.
 export async function uploadMenuImage(businessId: string, file: File): Promise<string> {
   const blob = await resizeToBlob(file);
-  const path = `${businessId}/${crypto.randomUUID()}.jpg`;
+  // crypto.randomUUID() only exists in a secure context (https, or exactly
+  // http://localhost) — testing from a phone against a laptop's LAN IP
+  // (plain http://192.168.x.x) doesn't qualify, so it's undefined there.
+  // uuidv4() has no such restriction.
+  const path = `${businessId}/${uuidv4()}.jpg`;
   const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
     contentType: "image/jpeg",
     cacheControl: "31536000",

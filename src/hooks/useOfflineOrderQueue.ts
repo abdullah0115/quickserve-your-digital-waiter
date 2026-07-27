@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { supabase } from "@/integrations/supabase/client";
 import {
   type PendingOrder,
@@ -115,7 +116,10 @@ export function useOfflineOrderQueue(businessSlug: string | undefined, callbacks
   }, [pendingOrder, attemptSync]);
 
   const queueOrder = useCallback(async (input: QueueOrderInput) => {
-    const localId = crypto.randomUUID();
+    // crypto.randomUUID() needs a secure context (https, or exactly
+    // http://localhost) — a phone testing against a laptop's LAN IP over
+    // plain http doesn't qualify, so it'd be undefined there.
+    const localId = uuidv4();
     const estimatedTotal = input.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
     await queueOfflineOrder({
       localId,
