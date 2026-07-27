@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { toast } from 'sonner'
 import { addLocalNotification, getUnreadNotifications } from '@/lib/db'
-import { playNotificationSound } from '@/lib/notificationSound'
+import { playNotificationSound, showBrowserNotification } from '@/lib/notificationSound'
 
 // Explicit Fallback Type Definition to bypass missing generated table keys
 export type NotificationRow = {
@@ -124,13 +124,11 @@ export function useNotifications(userId?: string, businessId?: string) {
           playNotificationSound()
 
           // Browser System Native Push
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(newNotif.title || 'New Update', {
-              body: newNotif.message || '',
-              icon: '/pwa-192x192.png',
-              badge: '/pwa-192x192.png',
-            })
-          }
+          showBrowserNotification(newNotif.title || 'New Update', {
+            body: newNotif.message || '',
+            icon: '/pwa-192x192.png',
+            badge: '/pwa-192x192.png',
+          })
 
           loadNotifications()
         }

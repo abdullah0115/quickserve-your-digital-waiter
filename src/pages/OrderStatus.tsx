@@ -12,7 +12,7 @@ import { format } from "date-fns";
 import { SEO } from "@/components/SEO";
 import { cn } from "@/lib/utils";
 import { addOrderToHistory, updateOrderHistoryStatus } from "@/lib/orderHistory";
-import { playNotificationSound, unlockNotificationAudio } from "@/lib/notificationSound";
+import { playNotificationSound, unlockNotificationAudio, showBrowserNotification } from "@/lib/notificationSound";
 import { ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/useMyOrders";
 
 interface Order {
@@ -90,15 +90,21 @@ export default function OrderStatus() {
       setOrder((prev) => {
         if (!prev) return prev;
         if (next.status && next.status !== prev.status) {
-          updateOrderHistoryStatus(slug, prev.id, next.status);
-          const label = ORDER_STATUS_LABEL[next.status] ?? next.status;
-          toast.info(`Order #${prev.token_number} — ${label}`);
-          playNotificationSound();
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(`Order #${prev.token_number} — ${label}`, {
+          // Alerting the customer is a nicety layered on top of the status
+          // update itself — a failure in any of these must never stop the
+          // status change (below) from actually being applied.
+          try {
+            updateOrderHistoryStatus(slug, prev.id, next.status);
+            const label = ORDER_STATUS_LABEL[next.status] ?? next.status;
+            toast.info(`Order #${prev.token_number} — ${label}`);
+            playNotificationSound();
+            showBrowserNotification(`Order #${prev.token_number} — ${label}`, {
               body: next.status === "ready" ? "Please collect from the counter" : undefined,
               icon: "/pwa-192x192.png",
             });
+          } catch {
+            // Already logged nowhere useful to the customer — the status
+            // update itself below still goes through regardless.
           }
         }
         return { ...prev, ...next };
