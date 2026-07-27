@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Coffee, LayoutDashboard, UtensilsCrossed, ClipboardList, QrCode as QrIcon,
   BarChart3, Settings, LogOut, Plus, Loader2, ChefHat, Bell, CheckCircle, Clock,
-  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck, Printer, ScanLine, TriangleAlert,
+  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck, Printer, ScanLine, TriangleAlert, RefreshCw,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { QrPrintDialog } from "@/components/qr-print/QrPrintDialog";
@@ -623,6 +623,31 @@ function QrManager({ business, limits, usage }: { business: Business; limits: Pl
     await supabase.from("qr_codes").delete().eq("id", id); load();
   };
 
+  // A qr_codes.id is permanent by design (so the same printed code keeps
+  // working across visits), which also means anyone who saves or forwards
+  // the link can place an order for that table from anywhere, not just
+  // someone physically there. There's no way to tell those two cases apart
+  // from the request alone, so this is the actual mitigation: retire the
+  // old id (any saved/shared link stops resolving at all — see
+  // resolve_qr_code/trg_resolve_order_table) and mint a fresh one for the
+  // same table to reprint. Delete-then-insert (not the other order) so a
+  // business already at its table cap doesn't get rejected replacing one
+  // it already has — orders.qr_code_id is ON DELETE SET NULL, so past
+  // orders placed through the old code keep their table_number untouched.
+  const regenerate = async (q: QrCode) => {
+    if (!confirm(`Regenerate the QR code for "${q.label}"? The current printed code will stop working immediately — you'll need to print and place the new one.`)) return;
+    const { error: delErr } = await supabase.from("qr_codes").delete().eq("id", q.id);
+    if (delErr) return toast.error(delErr.message);
+    const { data: created, error: insErr } = await supabase.from("qr_codes")
+      .insert({ business_id: business.id, table_number: q.table_number, label: q.label })
+      .select()
+      .single();
+    load();
+    if (insErr) return toast.error(`Old code removed, but couldn't create the replacement: ${insErr.message}`);
+    toast.success("QR code regenerated — the old link no longer works. Print the new one now.");
+    setPrintTarget(created as QrCode);
+  };
+
   // Generates one QR code per table, continuing after the highest existing
   // numeric table number — so running this again to add more tables later
   // never collides with or overwrites QR codes that are already printed.
@@ -677,6 +702,7 @@ function QrManager({ business, limits, usage }: { business: Business; limits: Pl
               <li>Each QR code is a random, unguessable link — not a typed table number, so no one can order for a different table by editing the URL.</li>
               <li>The table is verified on our server every time an order is placed, never trusted from the customer's browser.</li>
               <li>Only one active order is allowed per table at a time, so two customers can't order for the same table simultaneously.</li>
+              <li>A table's link doesn't expire on its own, so if one ever gets saved or forwarded somewhere it shouldn't, hit <span className="inline-flex items-center gap-0.5 text-foreground font-medium">Regenerate <RefreshCw className="w-3 h-3" /></span> on that table — the old link stops working immediately and you print a fresh one.</li>
             </ul>
           </div>
         </div>
@@ -740,6 +766,9 @@ function QrManager({ business, limits, usage }: { business: Business; limits: Pl
               <div className="flex items-center justify-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => setPrintTarget(q)}>
                   <Printer className="w-4 h-4 mr-1" /> Print
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => regenerate(q)} title="Invalidate this link and issue a new one">
+                  <RefreshCw className="w-4 h-4" />
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => remove(q.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
               </div>
