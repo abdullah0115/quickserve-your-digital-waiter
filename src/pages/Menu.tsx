@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ShoppingCart, ClipboardList, Search, Plus, Minus, Trash2, Star, UtensilsCrossed, Loader2, Check, WifiOff, X } from "lucide-react";
+import { ArrowLeft, ShoppingCart, ClipboardList, Search, Plus, Minus, Trash2, UtensilsCrossed, Loader2, Check, WifiOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +21,8 @@ import { addOrderToHistory } from "@/lib/orderHistory";
 import { useMyOrders, ORDER_STATUS_LABEL, ACTIVE_ORDER_STATUSES } from "@/hooks/useMyOrders";
 import { useOfflineOrderQueue } from "@/hooks/useOfflineOrderQueue";
 import { useOfflineMenu, type Item } from "@/hooks/useOfflineMenu";
+import { THEME_PRESETS, themeCssVars, type ThemePresetKey } from "@/lib/theme";
+import { MenuItemCard } from "@/components/menu/MenuItemCard";
 
 export default function Menu() {
   const { slug } = useParams();
@@ -275,6 +278,8 @@ export default function Menu() {
 
   const cartCount = cart.count();
   const cartTotal = cart.total();
+  const preset = THEME_PRESETS[business.theme_preset as ThemePresetKey] ?? THEME_PRESETS.warm_classic;
+  const needsFraunces = preset.headingFont.includes("Fraunces");
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -296,9 +301,15 @@ export default function Menu() {
         type="restaurant"
         jsonLd={jsonLd}
       />
-      <div className="min-h-screen bg-background pb-32">
+      {needsFraunces && (
+        <Helmet>
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+          <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&display=swap" rel="stylesheet" />
+        </Helmet>
+      )}
+      <div className="min-h-screen pb-32" style={{ ...themeCssVars(preset), background: "var(--theme-bg)" }}>
         {/* Header */}
-        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b">
+        <div className="sticky top-0 z-30 backdrop-blur-xl border-b" style={{ background: "var(--theme-bg)", borderColor: "var(--theme-accent-light)" }}>
           {pendingOrder && (
             <div className="bg-muted text-foreground border-b">
               <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm">
@@ -336,17 +347,24 @@ export default function Menu() {
           )}
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button size="icon" variant="ghost" onClick={() => navigate(`/${slug}`)}><ArrowLeft className="w-5 h-5" /></Button>
+              <Button size="icon" variant="ghost" style={{ color: "var(--theme-text)" }} onClick={() => navigate(`/${slug}`)}><ArrowLeft className="w-5 h-5" /></Button>
               <div>
-                <h1 className="font-display text-lg font-bold leading-tight">{business.name}</h1>
-                <p className="text-xs text-muted-foreground">{orderType === "dine_in" ? `Table ${tableNumber ?? "—"}` : "Takeaway"}</p>
+                <h1
+                  className="text-lg leading-tight"
+                  style={{ fontFamily: "var(--theme-font-heading)", fontWeight: "var(--theme-heading-weight)", color: "var(--theme-text)" }}
+                >
+                  {business.name}
+                </h1>
+                <p className="text-xs" style={{ color: "var(--theme-text-muted)", fontFamily: "var(--theme-font-body)" }}>
+                  {orderType === "dine_in" ? `Table ${tableNumber ?? "—"}` : "Takeaway"}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {myOrders.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="icon" variant="outline" className="relative">
+                    <Button size="icon" variant="outline" className="relative" style={{ color: "var(--theme-text)", borderColor: "var(--theme-accent-light)", background: "var(--theme-card-bg)" }}>
                       <ClipboardList className="w-5 h-5" />
                       {activeOrders.length > 0 && (
                         <Badge className="absolute -top-2 -right-2 bg-accent text-accent-foreground h-5 w-5 p-0 flex items-center justify-center text-xs">
@@ -379,7 +397,7 @@ export default function Menu() {
               )}
             <Sheet open={cartOpen} onOpenChange={setCartOpen}>
               <SheetTrigger asChild>
-                <Button size="icon" variant="outline" className="relative">
+                <Button size="icon" variant="outline" className="relative" style={{ color: "var(--theme-text)", borderColor: "var(--theme-accent-light)", background: "var(--theme-card-bg)" }}>
                   <ShoppingCart className="w-5 h-5" />
                   {cartCount > 0 && <Badge className="absolute -top-2 -right-2 bg-accent text-accent-foreground h-5 w-5 p-0 flex items-center justify-center text-xs">{cartCount}</Badge>}
                 </Button>
@@ -449,9 +467,34 @@ export default function Menu() {
           {/* Categories */}
           <div className="container mx-auto px-4 pb-3 overflow-x-auto">
             <div className="flex gap-2 min-w-max">
-              <Button size="sm" variant={selectedCat === "all" ? "default" : "outline"} className={selectedCat === "all" ? "bg-primary text-primary-foreground" : ""} onClick={() => setSelectedCat("all")}>All</Button>
+              <Button
+                size="sm"
+                variant="outline"
+                style={{
+                  fontFamily: "var(--theme-font-body)",
+                  borderRadius: "var(--theme-button-radius)",
+                  background: selectedCat === "all" ? "var(--theme-accent)" : "transparent",
+                  color: selectedCat === "all" ? "var(--theme-on-accent)" : "var(--theme-text)",
+                  borderColor: "var(--theme-accent-light)",
+                }}
+                onClick={() => setSelectedCat("all")}
+              >
+                All
+              </Button>
               {cats.map((c) => (
-                <Button key={c.id} size="sm" variant={selectedCat === c.id ? "default" : "outline"} className={selectedCat === c.id ? "bg-primary text-primary-foreground" : ""} onClick={() => setSelectedCat(c.id)}>
+                <Button
+                  key={c.id}
+                  size="sm"
+                  variant="outline"
+                  style={{
+                    fontFamily: "var(--theme-font-body)",
+                    borderRadius: "var(--theme-button-radius)",
+                    background: selectedCat === c.id ? "var(--theme-accent)" : "transparent",
+                    color: selectedCat === c.id ? "var(--theme-on-accent)" : "var(--theme-text)",
+                    borderColor: "var(--theme-accent-light)",
+                  }}
+                  onClick={() => setSelectedCat(c.id)}
+                >
                   {c.name}
                 </Button>
               ))}
@@ -464,39 +507,26 @@ export default function Menu() {
           <div className="space-y-8">
             {grouped.map((g) => (
               <section key={g.name}>
-                <h2 className="font-display text-xl font-bold mb-4">{g.name}</h2>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <h2
+                  className="text-xl mb-4"
+                  style={{ fontFamily: "var(--theme-font-heading)", fontWeight: "var(--theme-heading-weight)", color: "var(--theme-text)" }}
+                >
+                  {g.name}
+                </h2>
+                <div className="space-y-2.5">
                   {g.items.map((it) => {
                     const inCart = cart.items.find((c) => c.id === it.id);
                     return (
-                      <motion.div key={it.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={cn("rounded-2xl border bg-card overflow-hidden", !it.is_available && "opacity-50")}>
-                        <div className="relative">
-                          {it.image_url ? (
-                            <img src={it.image_url} alt={it.name} className="w-full aspect-4/3 object-cover" />
-                          ) : (
-                            <div className="w-full aspect-4/3 bg-gradient-warm flex items-center justify-center"><UtensilsCrossed className="w-10 h-10 text-accent-foreground" /></div>
-                          )}
-                          {it.is_featured && <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground"><Star className="w-3 h-3 mr-0.5 fill-current" />Popular</Badge>}
-                          {!it.is_available && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><span className="bg-card px-3 py-1 rounded-full text-sm font-medium">Out of stock</span></div>}
-                        </div>
-                        <div className="p-4">
-                          <h3 className="font-display font-semibold mb-1">{it.name}</h3>
-                          {it.description && <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{it.description}</p>}
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-lg font-bold text-secondary">PKR {Number(it.price).toLocaleString()}</span>
-                            {inCart ? (
-                              <div className="flex items-center gap-1">
-                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => cart.updateQuantity(it.id, -1)}><Minus className="w-3 h-3" /></Button>
-                                <span className="w-7 text-center font-mono">{inCart.quantity}</span>
-                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => cart.updateQuantity(it.id, 1)}><Plus className="w-3 h-3" /></Button>
-                              </div>
-                            ) : (
-                              <Button size="sm" disabled={!it.is_available} onClick={() => cart.addItem(business.id, { id: it.id, name: it.name, price: Number(it.price), image_url: it.image_url })} className="bg-primary text-primary-foreground">
-                                <Plus className="w-3 h-3 mr-1" /> Add
-                              </Button>
-                            )}
-                          </div>
-                        </div>
+                      <motion.div key={it.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                        <MenuItemCard
+                          item={it}
+                          categoryName={g.name}
+                          quantityInCart={inCart?.quantity ?? 0}
+                          buttonStyle={preset.button.style}
+                          onAdd={() => cart.addItem(business.id, { id: it.id, name: it.name, price: Number(it.price), image_url: it.image_url })}
+                          onIncrement={() => cart.updateQuantity(it.id, 1)}
+                          onDecrement={() => cart.updateQuantity(it.id, -1)}
+                        />
                       </motion.div>
                     );
                   })}

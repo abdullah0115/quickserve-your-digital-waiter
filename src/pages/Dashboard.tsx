@@ -30,6 +30,8 @@ import { businessSettingsSchema, menuItemFormSchema, qrCodeFormSchema, firstZodE
 import { useSubscriptionLimits, type PlanLimits, type SubscriptionUsage } from "@/hooks/useSubscriptionLimits";
 import { ImageUploadField } from "@/components/ImageUploadField";
 import { deleteMenuImage } from "@/lib/uploadMenuImage";
+import { ThemePresetPicker } from "@/components/menu/ThemePresetPicker";
+import type { ThemePresetKey } from "@/lib/theme";
 
 interface Business { id: string; name: string; slug: string; }
 interface Category { id: string; name: string; display_order: number; }
@@ -888,14 +890,15 @@ function Analytics({ business, limits }: { business: Business; limits: PlanLimit
 }
 
 function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (b: Business) => void }) {
-  const [form, setForm] = useState<{ name: string; tagline: string; description: string; phone: string; address: string; cover_image_url: string }>({
-    name: business.name, tagline: "", description: "", phone: "", address: "", cover_image_url: "",
+  const [form, setForm] = useState<{ name: string; tagline: string; description: string; phone: string; address: string; cover_image_url: string; theme_preset: ThemePresetKey }>({
+    name: business.name, tagline: "", description: "", phone: "", address: "", cover_image_url: "", theme_preset: "warm_classic",
   });
   useEffect(() => {
-    supabase.from("businesses").select("name,tagline,description,phone,address,cover_image_url").eq("id", business.id).single().then(({ data }) => {
+    supabase.from("businesses").select("name,tagline,description,phone,address,cover_image_url,theme_preset").eq("id", business.id).single().then(({ data }) => {
       if (data) setForm({
         name: data.name, tagline: data.tagline ?? "", description: data.description ?? "",
         phone: data.phone ?? "", address: data.address ?? "", cover_image_url: data.cover_image_url ?? "",
+        theme_preset: (data.theme_preset as ThemePresetKey) ?? "warm_classic",
       });
     });
   }, [business.id]);
@@ -932,6 +935,17 @@ function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (
           </div>
         </div>
         <Button onClick={save} className="bg-primary text-primary-foreground">Save Changes</Button>
+      </CardContent></Card>
+
+      <Card className="mt-6"><CardContent className="p-6">
+        <div className="mb-4">
+          <h2 className="font-display text-lg font-semibold">Menu Theme</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            How your public menu (/{business.slug}/menu) looks to customers. Changes apply the moment you save.
+          </p>
+        </div>
+        <ThemePresetPicker value={form.theme_preset} onChange={(theme_preset) => setForm({ ...form, theme_preset })} />
+        <Button onClick={save} className="bg-primary text-primary-foreground mt-4">Save Changes</Button>
       </CardContent></Card>
     </div>
   );

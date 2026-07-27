@@ -122,6 +122,7 @@ export type Database = {
           slug: string
           tagline: string | null
           theme_color: string
+          theme_preset: string
           updated_at: string
         }
         Insert: {
@@ -144,6 +145,7 @@ export type Database = {
           slug: string
           tagline?: string | null
           theme_color?: string
+          theme_preset?: string
           updated_at?: string
         }
         Update: {
@@ -166,6 +168,7 @@ export type Database = {
           slug?: string
           tagline?: string | null
           theme_color?: string
+          theme_preset?: string
           updated_at?: string
         }
         Relationships: []
