@@ -21,6 +21,32 @@ export function unlockNotificationAudio() {
   if (ctx.state === "suspended") ctx.resume().catch(() => {});
 }
 
+// Android Chrome doesn't allow `new Notification(...)` from a regular page
+// at all — it throws "Illegal constructor; use ServiceWorkerRegistration.
+// showNotification() instead." Every call site here runs inside a state
+// updater triggered by an order-status change, so that throw doesn't stay
+// contained — it crashes the whole page (this is what was showing
+// "Something went wrong" the instant a tracked order's status changed on
+// Android, fixed by reloading only because the reload's fresh fetch never
+// re-runs this code path). Routing through the service worker works on
+// every platform that has one registered; the plain constructor is only a
+// fallback for browsers with no service worker at all. Wrapped in
+// try/catch regardless — an alert failing should never be able to take
+// the page down with it.
+export async function showBrowserNotification(title: string, options?: NotificationOptions) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, options);
+      return;
+    }
+    new Notification(title, options);
+  } catch {
+    // Best-effort alert — never worth crashing over.
+  }
+}
+
 export async function playNotificationSound() {
   try {
     const ctx = getContext();

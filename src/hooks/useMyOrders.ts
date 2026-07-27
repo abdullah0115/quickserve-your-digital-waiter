@@ -7,7 +7,7 @@ import {
   removeFromOrderHistory,
   type OrderHistoryEntry,
 } from "@/lib/orderHistory";
-import { playNotificationSound, unlockNotificationAudio } from "@/lib/notificationSound";
+import { playNotificationSound, unlockNotificationAudio, showBrowserNotification } from "@/lib/notificationSound";
 
 export const ORDER_STATUS_LABEL: Record<string, string> = {
   pending: "Order Received",
@@ -19,14 +19,19 @@ export const ORDER_STATUS_LABEL: Record<string, string> = {
 export const ACTIVE_ORDER_STATUSES = new Set(["pending", "preparing", "ready"]);
 
 function notifyStatusChange(tokenNumber: number, status: string) {
-  const label = ORDER_STATUS_LABEL[status] ?? status;
-  toast.info(`Order #${tokenNumber} — ${label}`);
-  playNotificationSound();
-  if ("Notification" in window && Notification.permission === "granted") {
-    new Notification(`Order #${tokenNumber} — ${label}`, {
+  // Called once per tracked order inside refresh()'s loop — a failure
+  // here must not stop the remaining orders in that same pass from
+  // getting their status updated.
+  try {
+    const label = ORDER_STATUS_LABEL[status] ?? status;
+    toast.info(`Order #${tokenNumber} — ${label}`);
+    playNotificationSound();
+    showBrowserNotification(`Order #${tokenNumber} — ${label}`, {
       body: status === "ready" ? "Please collect from the counter" : undefined,
       icon: "/pwa-192x192.png",
     });
+  } catch {
+    // Best-effort alert — the order's real status is already saved by the caller.
   }
 }
 
