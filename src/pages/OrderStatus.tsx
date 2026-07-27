@@ -80,7 +80,8 @@ export default function OrderStatus() {
     if (!order?.id || !slug) return;
     if (!ACTIVE_ORDER_STATUSES.has(order.status)) return;
     let cancelled = false;
-    const interval = setInterval(async () => {
+
+    const poll = async () => {
       const { data } = await supabase
         .rpc("get_order_status", { p_business_slug: slug, p_order_id: order.id })
         .maybeSingle();
@@ -103,8 +104,25 @@ export default function OrderStatus() {
         return { ...prev, ...next };
       });
       if (next.status && !ACTIVE_ORDER_STATUSES.has(next.status)) clearInterval(interval);
-    }, 5000);
-    return () => { cancelled = true; clearInterval(interval); };
+    };
+
+    const interval = setInterval(poll, 5000);
+    // Mobile browsers throttle or fully suspend setInterval while a tab is
+    // backgrounded (screen locked, customer switched to another app while
+    // waiting for food) — exactly the moment a status change matters most.
+    // The interval doesn't reliably catch up on its own once foregrounded
+    // again, so poll immediately on return instead of waiting on the next
+    // scheduled tick — this is what used to require a manual reload.
+    const onForeground = () => { if (document.visibilityState === "visible") poll(); };
+    document.addEventListener("visibilitychange", onForeground);
+    window.addEventListener("focus", onForeground);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onForeground);
+      window.removeEventListener("focus", onForeground);
+    };
     // Only re-run on id/slug change (not every status tick) — the interval
     // clears itself once a terminal status is reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps

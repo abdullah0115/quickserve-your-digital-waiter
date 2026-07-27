@@ -104,7 +104,18 @@ export function useMyOrders(slug: string | undefined) {
   useEffect(() => {
     if (!slug || !activeIds) return;
     const interval = setInterval(refresh, 5000);
-    return () => clearInterval(interval);
+    // Same reasoning as OrderStatus.tsx's polling: mobile browsers throttle
+    // or suspend setInterval while this tab is backgrounded, so catch up
+    // immediately the moment it's foregrounded again rather than waiting
+    // on a possibly-stalled interval tick.
+    const onForeground = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onForeground);
+    window.addEventListener("focus", onForeground);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onForeground);
+      window.removeEventListener("focus", onForeground);
+    };
   }, [activeIds, slug, refresh]);
 
   return { orders, refresh };
