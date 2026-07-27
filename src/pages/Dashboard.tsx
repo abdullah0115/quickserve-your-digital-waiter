@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Coffee, LayoutDashboard, UtensilsCrossed, ClipboardList, QrCode as QrIcon,
   BarChart3, Settings, LogOut, Plus, Loader2, ChefHat, Bell, CheckCircle, Clock,
-  Trash2, ExternalLink, Eye, Monitor, TrendingUp, ShieldCheck, Printer, ScanLine, TriangleAlert, RefreshCw,
+  Trash2, ExternalLink, Eye, Monitor, TrendingUp, TrendingDown, ShieldCheck, Printer, ScanLine, TriangleAlert, RefreshCw,
+  Download,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { QrPrintDialog } from "@/components/qr-print/QrPrintDialog";
@@ -19,6 +20,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import type { DateRange } from "react-day-picker";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -797,10 +801,81 @@ function QrManager({ business, limits, usage }: { business: Business; limits: Pl
   );
 }
 
+// Order counts are bucketed by local hour-of-day into named service
+// windows — "Late Night" exists so an order placed at 2am doesn't just
+// silently vanish from the chart (every hour has exactly one home).
+const HOUR_BUCKETS: Array<{ label: string; test: (h: number) => boolean }> = [
+  { label: "Morning · 6–11am", test: (h) => h >= 6 && h < 11 },
+  { label: "Lunch · 11am–3pm", test: (h) => h >= 11 && h < 15 },
+  { label: "Evening · 3–7pm", test: (h) => h >= 15 && h < 19 },
+  { label: "Dinner · 7–11pm", test: (h) => h >= 19 && h < 23 },
+  { label: "Late Night · 11pm–6am", test: (h) => h >= 23 || h < 6 },
+];
+
+// `previous === 0` has no baseline to divide by — "New" instead of a
+// misleading/undefined percentage. Silent (no line at all) only when both
+// periods are genuinely zero, so an empty stat card doesn't grow a stray
+// "New" badge on a business's very first day.
+function PeriodDelta({ current, previous }: { current: number; previous: number }) {
+  if (previous === 0) {
+    if (current === 0) return null;
+    return (
+      <div className="flex items-center gap-1 text-xs font-medium text-accent mt-1.5">
+        <TrendingUp className="w-3 h-3" /> New vs previous period
+      </div>
+    );
+  }
+  const pct = ((current - previous) / previous) * 100;
+  const isUp = pct >= 0;
+  const Icon = isUp ? TrendingUp : TrendingDown;
+  return (
+    <div className={cn("flex items-center gap-1 text-xs font-medium mt-1.5", isUp ? "text-green-600" : "text-destructive")}>
+      <Icon className="w-3 h-3" />
+      {isUp ? "+" : ""}{pct.toFixed(0)}% vs previous period
+    </div>
+  );
+}
+
+type RangePreset = "today" | "week" | "month" | "custom";
+
+// All non-custom presets are rolling windows ending "now" — "This week"
+// keeps the app's original default (7 calendar days including today).
+function computeRange(preset: RangePreset, custom: DateRange | undefined): { since: Date; until: Date; label: string } {
+  const now = new Date();
+  if (preset === "today") {
+    const since = new Date(); since.setHours(0, 0, 0, 0);
+    return { since, until: now, label: "Today" };
+  }
+  if (preset === "month") {
+    const since = new Date(); since.setDate(since.getDate() - 29); since.setHours(0, 0, 0, 0);
+    return { since, until: now, label: "Last 30 days" };
+  }
+  if (preset === "custom" && custom?.from) {
+    const since = new Date(custom.from); since.setHours(0, 0, 0, 0);
+    const until = new Date(custom.to ?? custom.from); until.setHours(23, 59, 59, 999);
+    const label = custom.to && custom.to.getTime() !== custom.from.getTime()
+      ? `${format(since, "MMM d")} – ${format(until, "MMM d, yyyy")}`
+      : format(since, "MMM d, yyyy");
+    return { since, until, label };
+  }
+  const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
+  return { since, until: now, label: "Last 7 days" };
+}
+
 function Analytics({ business, limits }: { business: Business; limits: PlanLimits | null }) {
   const [data, setData] = useState<Array<{ date: string; orders: number; revenue: number }>>([]);
+  const [topItems, setTopItems] = useState<Array<{ name: string; count: number; revenue: number }>>([]);
+  const [peakHours, setPeakHours] = useState<Array<{ label: string; count: number }>>([]);
+  const [categoryBreakdown, setCategoryBreakdown] = useState<Array<{ name: string; revenue: number }>>([]);
+  const [prevPeriod, setPrevPeriod] = useState<{ orders: number; revenue: number } | null>(null);
   const [todayCount, setTodayCount] = useState<number | null>(null);
+  const [rangePreset, setRangePreset] = useState<RangePreset>("week");
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
   const isTodayOnly = limits?.analyticsLevel === "today_only";
+  const { since, until, label: rangeLabel } = useMemo(
+    () => computeRange(rangePreset, customRange),
+    [rangePreset, customRange]
+  );
 
   useEffect(() => {
     if (isTodayOnly) {
@@ -811,22 +886,72 @@ function Analytics({ business, limits }: { business: Business; limits: PlanLimit
       return;
     }
     (async () => {
-      const since = new Date(); since.setDate(since.getDate() - 7);
-      const { data: orders } = await supabase.from("orders").select("created_at,total_amount")
-        .eq("business_id", business.id).gte("created_at", since.toISOString());
+      const [{ data: orders }, { data: menuItems }, { data: categories }] = await Promise.all([
+        supabase.from("orders")
+          .select("created_at,total_amount,order_items(name,price,quantity,menu_item_id)")
+          .eq("business_id", business.id).gte("created_at", since.toISOString()).lte("created_at", until.toISOString()),
+        supabase.from("menu_items").select("id,category_id").eq("business_id", business.id),
+        supabase.from("menu_categories").select("id,name").eq("business_id", business.id),
+      ]);
+      const categoryNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+      const categoryNameByMenuItemId = new Map(
+        (menuItems ?? []).map((m) => [m.id, (m.category_id && categoryNameById.get(m.category_id)) || "Uncategorized"])
+      );
       const map = new Map<string, { orders: number; revenue: number }>();
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        map.set(format(d, "MMM dd"), { orders: 0, revenue: 0 });
+      const cursor = new Date(since);
+      const untilDay = new Date(until); untilDay.setHours(0, 0, 0, 0);
+      while (cursor <= untilDay) {
+        map.set(format(cursor, "MMM dd"), { orders: 0, revenue: 0 });
+        cursor.setDate(cursor.getDate() + 1);
       }
+      const itemMap = new Map<string, { count: number; revenue: number }>();
+      const categoryMap = new Map<string, number>();
+      const hourCounts = HOUR_BUCKETS.map((b) => ({ label: b.label, count: 0 }));
       orders?.forEach((o) => {
-        const k = format(new Date(o.created_at), "MMM dd");
+        const created = new Date(o.created_at);
+        const k = format(created, "MMM dd");
         const cur = map.get(k);
         if (cur) { cur.orders++; cur.revenue += Number(o.total_amount); }
+        o.order_items?.forEach((it) => {
+          const itemCur = itemMap.get(it.name) ?? { count: 0, revenue: 0 };
+          itemCur.count += it.quantity;
+          itemCur.revenue += Number(it.price) * it.quantity;
+          itemMap.set(it.name, itemCur);
+
+          const itemRevenue = Number(it.price) * it.quantity;
+          const catName = (it.menu_item_id && categoryNameByMenuItemId.get(it.menu_item_id)) || "Uncategorized";
+          categoryMap.set(catName, (categoryMap.get(catName) ?? 0) + itemRevenue);
+        });
+        const bucketIdx = HOUR_BUCKETS.findIndex((b) => b.test(created.getHours()));
+        if (bucketIdx !== -1) hourCounts[bucketIdx].count++;
       });
       setData(Array.from(map.entries()).map(([date, v]) => ({ date, ...v })));
+      setTopItems(
+        Array.from(itemMap.entries())
+          .map(([name, v]) => ({ name, ...v }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 5)
+      );
+      setPeakHours(hourCounts);
+      setCategoryBreakdown(
+        Array.from(categoryMap.entries())
+          .map(([name, revenue]) => ({ name, revenue }))
+          .sort((a, b) => b.revenue - a.revenue)
+      );
+
+      // Previous period = the same length of time immediately before
+      // `since` — works for any selected range, not just the default
+      // rolling 7 days (a custom range's "until" isn't always "now").
+      const prevUntil = since;
+      const prevSince = new Date(since.getTime() - (until.getTime() - since.getTime()));
+      const { data: prevOrders } = await supabase.from("orders").select("total_amount")
+        .eq("business_id", business.id).gte("created_at", prevSince.toISOString()).lt("created_at", prevUntil.toISOString());
+      setPrevPeriod({
+        orders: prevOrders?.length ?? 0,
+        revenue: prevOrders?.reduce((s, o) => s + Number(o.total_amount), 0) ?? 0,
+      });
     })();
-  }, [business.id, isTodayOnly]);
+  }, [business.id, isTodayOnly, since, until]);
 
   if (isTodayOnly) {
     return (
@@ -857,33 +982,210 @@ function Analytics({ business, limits }: { business: Business; limits: PlanLimit
   const total = data.reduce((s, d) => s + d.revenue, 0);
   const orderTotal = data.reduce((s, d) => s + d.orders, 0);
 
+  const downloadReport = () => {
+    const row = (cells: Array<string | number>) =>
+      cells.map((c) => {
+        const s = String(c);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(",");
+    const lines = [
+      row(["QuickWaiterz Analytics Report"]),
+      row(["Business", business.name]),
+      row(["Range", rangeLabel]),
+      "",
+      row(["Summary"]),
+      row(["Total Orders", orderTotal]),
+      row(["Total Revenue (PKR)", total]),
+      row(["Avg Order (PKR)", orderTotal ? Math.round(total / orderTotal) : 0]),
+      "",
+      row(["Daily Orders"]),
+      row(["Date", "Orders", "Revenue (PKR)"]),
+      ...data.map((d) => row([d.date, d.orders, d.revenue])),
+      "",
+      row(["Top Items"]),
+      row(["Rank", "Item", "Sold", "Revenue (PKR)"]),
+      ...topItems.map((it, i) => row([i + 1, it.name, it.count, it.revenue])),
+      "",
+      row(["Category Breakdown"]),
+      row(["Category", "Revenue (PKR)"]),
+      ...categoryBreakdown.map((c) => row([c.name, c.revenue])),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `quickwaiterz-analytics-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold">Analytics</h1>
-        <p className="text-muted-foreground mt-1">Last 7 days</p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-bold">Analytics</h1>
+          <p className="text-muted-foreground mt-1">{rangeLabel}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Tabs value={rangePreset} onValueChange={(v) => setRangePreset(v as RangePreset)}>
+            <TabsList>
+              <TabsTrigger value="today">Today</TabsTrigger>
+              <TabsTrigger value="week">This week</TabsTrigger>
+              <TabsTrigger value="month">This month</TabsTrigger>
+              <TabsTrigger value="custom">Custom</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {rangePreset === "custom" && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="font-mono">
+                  {customRange?.from
+                    ? `${format(customRange.from, "MMM d")}${customRange.to ? " – " + format(customRange.to, "MMM d") : ""}`
+                    : "Pick dates"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="range"
+                  selected={customRange}
+                  onSelect={setCustomRange}
+                  numberOfMonths={2}
+                  disabled={{ after: new Date() }}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
+          <Button variant="outline" size="sm" onClick={downloadReport} className="gap-1.5">
+            <Download className="w-4 h-4" /> Download report
+          </Button>
+        </div>
       </div>
       <div className="grid sm:grid-cols-3 gap-4 mb-6">
-        <Card><CardContent className="p-5"><div className="text-xs text-muted-foreground">Total Orders</div><div className="font-mono text-3xl font-bold mt-1">{orderTotal}</div></CardContent></Card>
-        <Card><CardContent className="p-5"><div className="text-xs text-muted-foreground">Total Revenue</div><div className="font-mono text-3xl font-bold mt-1">PKR {total.toLocaleString()}</div></CardContent></Card>
-        <Card><CardContent className="p-5"><div className="text-xs text-muted-foreground">Avg Order</div><div className="font-mono text-3xl font-bold mt-1">PKR {orderTotal ? Math.round(total / orderTotal).toLocaleString() : 0}</div></CardContent></Card>
+        <Card><CardContent className="p-5">
+          <div className="text-xs text-muted-foreground">Total Orders</div>
+          <div className="font-mono text-3xl font-bold mt-1">{orderTotal}</div>
+          {prevPeriod && <PeriodDelta current={orderTotal} previous={prevPeriod.orders} />}
+        </CardContent></Card>
+        <Card><CardContent className="p-5">
+          <div className="text-xs text-muted-foreground">Total Revenue</div>
+          <div className="font-mono text-3xl font-bold mt-1">PKR {total.toLocaleString()}</div>
+          {prevPeriod && <PeriodDelta current={total} previous={prevPeriod.revenue} />}
+        </CardContent></Card>
+        <Card><CardContent className="p-5">
+          <div className="text-xs text-muted-foreground">Avg Order</div>
+          <div className="font-mono text-3xl font-bold mt-1">PKR {orderTotal ? Math.round(total / orderTotal).toLocaleString() : 0}</div>
+          {prevPeriod && (
+            <PeriodDelta
+              current={orderTotal ? total / orderTotal : 0}
+              previous={prevPeriod.orders ? prevPeriod.revenue / prevPeriod.orders : 0}
+            />
+          )}
+        </CardContent></Card>
       </div>
       <Card><CardContent className="p-6">
         <h3 className="font-semibold mb-4">Daily Orders</h3>
         <div className="space-y-2">
-          {data.map((d) => {
-            const max = Math.max(...data.map((x) => x.orders), 1);
-            return (
-              <div key={d.date} className="flex items-center gap-3">
-                <div className="w-16 text-xs text-muted-foreground">{d.date}</div>
-                <div className="flex-1 h-8 bg-muted rounded-md overflow-hidden">
-                  <div className="h-full bg-gradient-warm rounded-md transition-all" style={{ width: `${(d.orders / max) * 100}%` }} />
+          {(() => {
+            const maxOrders = Math.max(...data.map((x) => x.orders), 1);
+            return data.map((d) => {
+              // A day with 0 orders still gets a small baseline width so the
+              // gray track isn't mistaken for a full-width bar — the actual
+              // value bar (or its absence) needs to stay visually distinct
+              // from the track itself.
+              const pct = d.orders > 0 ? (d.orders / maxOrders) * 100 : 6;
+              return (
+                <div key={d.date} className="flex items-center gap-3">
+                  <div className="w-16 text-xs text-muted-foreground">{d.date}</div>
+                  <div className="flex-1 h-8 bg-muted rounded-md overflow-hidden">
+                    <div
+                      className={cn("h-full rounded-md transition-all", d.orders > 0 ? "bg-gradient-warm" : "bg-muted-foreground/25")}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="w-24 text-right text-sm font-mono">{d.orders} · PKR {d.revenue.toLocaleString()}</div>
                 </div>
-                <div className="w-24 text-right text-sm font-mono">{d.orders} · PKR {d.revenue.toLocaleString()}</div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
+      </CardContent></Card>
+      <Card className="mt-6"><CardContent className="p-6">
+        <h3 className="font-semibold mb-4">Top Items</h3>
+        {topItems.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No items sold in this period yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {topItems.map((it, i) => (
+              <div key={it.name} className="flex items-center gap-3">
+                <div className="w-5 text-sm font-mono text-muted-foreground">{i + 1}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{it.name}</div>
+                  <div className="text-xs text-muted-foreground">{it.count} sold</div>
+                </div>
+                <div className="text-sm font-mono font-semibold shrink-0">PKR {it.revenue.toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent></Card>
+      <Card className="mt-6"><CardContent className="p-6">
+        <h3 className="font-semibold mb-4">Peak Hours</h3>
+        <div className="space-y-2">
+          {(() => {
+            const maxCount = Math.max(...peakHours.map((h) => h.count), 1);
+            const peakCount = Math.max(...peakHours.map((h) => h.count), 0);
+            return peakHours.map((h) => {
+              const isPeak = h.count > 0 && h.count === peakCount;
+              const pct = h.count > 0 ? (h.count / maxCount) * 100 : 6;
+              return (
+                <div key={h.label} className="flex items-center gap-3">
+                  <div className="w-36 shrink-0 text-xs text-muted-foreground flex items-center gap-1.5">
+                    {h.label}
+                    {isPeak && <span className="text-[10px] font-semibold text-accent">· Peak</span>}
+                  </div>
+                  <div className="flex-1 h-8 bg-muted rounded-md overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-md transition-all",
+                        h.count === 0 ? "bg-muted-foreground/25" : isPeak ? "bg-gradient-warm" : "bg-accent/40"
+                      )}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="w-10 text-right text-sm font-mono">{h.count}</div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      </CardContent></Card>
+      <Card className="mt-6"><CardContent className="p-6">
+        <h3 className="font-semibold mb-4">Category Breakdown</h3>
+        {categoryBreakdown.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No category data for this period yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {(() => {
+              const maxRevenue = Math.max(...categoryBreakdown.map((c) => c.revenue), 1);
+              const categoryTotal = categoryBreakdown.reduce((s, c) => s + c.revenue, 0) || 1;
+              return categoryBreakdown.map((c) => {
+                const pct = (c.revenue / maxRevenue) * 100;
+                const share = Math.round((c.revenue / categoryTotal) * 100);
+                return (
+                  <div key={c.name} className="flex items-center gap-3">
+                    <div className="w-32 shrink-0 text-xs text-muted-foreground truncate">{c.name}</div>
+                    <div className="flex-1 h-8 bg-muted rounded-md overflow-hidden">
+                      <div className="h-full bg-gradient-warm rounded-md transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="w-36 text-right text-sm font-mono shrink-0">PKR {c.revenue.toLocaleString()} · {share}%</div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )}
       </CardContent></Card>
     </div>
   );
