@@ -347,7 +347,7 @@ export default function Menu() {
           )}
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button size="icon" variant="ghost" onClick={() => navigate(`/${slug}`)}><ArrowLeft className="w-5 h-5" /></Button>
+              <Button size="icon" variant="ghost" style={{ color: "var(--theme-text)" }} onClick={() => navigate(`/${slug}`)}><ArrowLeft className="w-5 h-5" /></Button>
               <div>
                 <h1
                   className="text-lg leading-tight"
@@ -364,7 +364,7 @@ export default function Menu() {
               {myOrders.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="icon" variant="outline" className="relative">
+                    <Button size="icon" variant="outline" className="relative" style={{ color: "var(--theme-text)", borderColor: "var(--theme-accent-light)", background: "var(--theme-card-bg)" }}>
                       <ClipboardList className="w-5 h-5" />
                       {activeOrders.length > 0 && (
                         <Badge className="absolute -top-2 -right-2 bg-accent text-accent-foreground h-5 w-5 p-0 flex items-center justify-center text-xs">
@@ -397,7 +397,7 @@ export default function Menu() {
               )}
             <Sheet open={cartOpen} onOpenChange={setCartOpen}>
               <SheetTrigger asChild>
-                <Button size="icon" variant="outline" className="relative">
+                <Button size="icon" variant="outline" className="relative" style={{ color: "var(--theme-text)", borderColor: "var(--theme-accent-light)", background: "var(--theme-card-bg)" }}>
                   <ShoppingCart className="w-5 h-5" />
                   {cartCount > 0 && <Badge className="absolute -top-2 -right-2 bg-accent text-accent-foreground h-5 w-5 p-0 flex items-center justify-center text-xs">{cartCount}</Badge>}
                 </Button>
