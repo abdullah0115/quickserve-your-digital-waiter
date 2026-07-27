@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 export interface Business {
   id: string; name: string; slug: string
   cover_image_url: string | null; cuisine_type: string | null; city: string | null; address: string | null
+  theme_preset: string
 }
 export interface Cat { id: string; name: string; display_order: number }
 export interface Item {
@@ -65,7 +66,7 @@ export function useOfflineMenu(businessSlug: string) {
       if (isOnline) {
         const { data: biz, error: bizError } = await supabase
           .from('businesses')
-          .select('id,name,slug,cover_image_url,cuisine_type,city,address')
+          .select('id,name,slug,cover_image_url,cuisine_type,city,address,theme_preset')
           .eq('slug', businessSlug)
           .maybeSingle()
 
