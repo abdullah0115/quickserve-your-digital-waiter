@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { resizeImageToDataUrl } from "./resizeImage";
+import { ImageUploadField } from "@/components/ImageUploadField";
 
 interface Category {
   id: string;
@@ -27,6 +28,10 @@ interface ScannedRow {
   price: string;
   category: string;
   include: boolean;
+  // A physical paper menu has no photos to extract — this is where an
+  // owner can attach a real one per item before it's saved, instead of
+  // every scanned item landing with no image at all.
+  imageUrl: string | null;
 }
 
 interface ScanMenuDialogProps {
@@ -130,6 +135,7 @@ export function ScanMenuDialog({
           price: String(it.price),
           category: it.category ?? "",
           include: true,
+          imageUrl: null,
         })),
       );
       setStep("review");
@@ -183,6 +189,7 @@ export function ScanMenuDialog({
         name: r.name.trim().slice(0, 100),
         price: Number(r.price),
         category_id: r.category.trim() ? categoryIdByName.get(r.category.trim().toLowerCase()) ?? null : null,
+        image_url: r.imageUrl,
       }));
 
       const { error: insErr } = await supabase.from("menu_items").insert(payload);
@@ -285,13 +292,19 @@ export function ScanMenuDialog({
         {step === "review" && (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              Found {rows.length} item{rows.length > 1 ? "s" : ""}. Review, edit, or uncheck anything before adding.
+              Found {rows.length} item{rows.length > 1 ? "s" : ""}. Review, edit, or uncheck anything before adding — the photo icon lets you attach a real picture, since there's none on a paper menu to scan.
             </p>
             <ScrollArea className="max-h-[45vh] pr-2">
               <div className="space-y-2">
                 {rows.map((r) => (
                   <div key={r.tempId} className="flex items-start gap-2 p-2.5 rounded-lg border">
                     <Checkbox className="mt-2.5" checked={r.include} onCheckedChange={(c) => updateRow(r.tempId, { include: !!c })} />
+                    <ImageUploadField
+                      compact
+                      businessId={businessId}
+                      value={r.imageUrl}
+                      onChange={(url) => updateRow(r.tempId, { imageUrl: url })}
+                    />
                     <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto] gap-1.5">
                       <Input className="col-span-2 h-8 text-sm" value={r.name} onChange={(e) => updateRow(r.tempId, { name: e.target.value })} placeholder="Item name" />
                       <Input className="h-8 text-sm" type="number" value={r.price} onChange={(e) => updateRow(r.tempId, { price: e.target.value })} placeholder="Price" />
