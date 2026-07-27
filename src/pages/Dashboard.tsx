@@ -28,6 +28,8 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { businessSettingsSchema, menuItemFormSchema, qrCodeFormSchema, firstZodError } from "@/lib/validation";
 import { useSubscriptionLimits, type PlanLimits, type SubscriptionUsage } from "@/hooks/useSubscriptionLimits";
+import { ImageUploadField } from "@/components/ImageUploadField";
+import { deleteMenuImage } from "@/lib/uploadMenuImage";
 
 interface Business { id: string; name: string; slug: string; }
 interface Category { id: string; name: string; display_order: number; }
@@ -446,10 +448,11 @@ function MenuManager({ business }: { business: Business }) {
     else { toast.success(editing ? "Updated" : "Added"); setShowItem(false); load(); }
   };
 
-  const deleteItem = async (id: string) => {
+  const deleteItem = async (id: string, imageUrl: string | null) => {
     if (!confirm("Delete this item?")) return;
     const { error } = await supabase.from("menu_items").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Deleted"); load(); }
+    if (error) toast.error(error.message);
+    else { toast.success("Deleted"); deleteMenuImage(imageUrl); load(); }
   };
 
   const toggleAvail = async (it: MenuItem) => {
@@ -496,7 +499,14 @@ function MenuManager({ business }: { business: Business }) {
         <TabsContent value="items" className="mt-6">
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {items.map((it) => (
-              <Card key={it.id} className={cn(!it.is_available && "opacity-60")}>
+              <Card key={it.id} className={cn("overflow-hidden", !it.is_available && "opacity-60")}>
+                {it.image_url ? (
+                  <img src={it.image_url} alt="" className="w-full aspect-4/3 object-cover" />
+                ) : (
+                  <div className="w-full aspect-4/3 bg-muted flex items-center justify-center">
+                    <UtensilsCrossed className="w-8 h-8 text-muted-foreground/50" />
+                  </div>
+                )}
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between mb-2">
                     <h3 className="font-semibold">{it.name}</h3>
@@ -511,7 +521,7 @@ function MenuManager({ business }: { business: Business }) {
                     </div>
                     <div className="flex gap-1">
                       <Button size="sm" variant="ghost" onClick={() => openEdit(it)}>Edit</Button>
-                      <Button size="sm" variant="ghost" onClick={() => deleteItem(it.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => deleteItem(it.id, it.image_url)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                     </div>
                   </div>
                 </CardContent>
@@ -566,7 +576,16 @@ function MenuManager({ business }: { business: Business }) {
                 </Select>
               </div>
             </div>
-            <div><Label>Image URL</Label><Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." /></div>
+            <div>
+              <Label>Photo</Label>
+              <div className="mt-1.5">
+                <ImageUploadField
+                  businessId={business.id}
+                  value={form.image_url || null}
+                  onChange={(url) => setForm({ ...form, image_url: url ?? "" })}
+                />
+              </div>
+            </div>
             <div className="flex items-center gap-3"><Switch checked={form.is_featured} onCheckedChange={(c) => setForm({ ...form, is_featured: c })} /> <span className="text-sm">Mark as featured</span></div>
             <Button onClick={saveItem} className="w-full bg-primary text-primary-foreground">{editing ? "Save changes" : "Add item"}</Button>
           </div>
@@ -872,7 +891,17 @@ function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (
         <div><Label>Description</Label><Textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
         <div><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
         <div><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-        <div><Label>Cover Image URL</Label><Input value={form.cover_image_url} onChange={(e) => setForm({ ...form, cover_image_url: e.target.value })} placeholder="https://..." /></div>
+        <div>
+          <Label>Cover Photo</Label>
+          <div className="mt-1.5">
+            <ImageUploadField
+              businessId={business.id}
+              value={form.cover_image_url || null}
+              onChange={(url) => setForm({ ...form, cover_image_url: url ?? "" })}
+              aspect="aspect-video"
+            />
+          </div>
+        </div>
         <Button onClick={save} className="bg-primary text-primary-foreground">Save Changes</Button>
       </CardContent></Card>
     </div>
