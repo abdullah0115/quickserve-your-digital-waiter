@@ -5,6 +5,34 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      scripts/prerender.mjs bakes static marketing copy into #root so
+      crawlers that don't run JS (Paddle's domain reviewer among them) see
+      real content. vercel.json rewrites every unmatched path to "/", so
+      that same home-page copy was being served for /dashboard, /:slug/menu,
+      order tracking — every route in the app. Browsers paint it, then React
+      mounts and replaces it, which showed customers a flash of pricing text
+      on the way into a menu.
+
+      Only "/" and "/pricing" have prerendered markup that actually matches
+      the page being rendered. Everywhere else it is hidden before first
+      paint: still present in the HTML for non-JS crawlers, never shown to a
+      person. This has to be a classic inline script (not type="module", not
+      deferred) so it runs during head parse, ahead of the body.
+    -->
+    <style>
+      html.spa-route main[data-prerendered] { display: none; }
+    </style>
+    <script>
+      (function () {
+        var p = location.pathname.replace(/\/+$/, "") || "/";
+        if (p !== "/" && p !== "/pricing") {
+          document.documentElement.className += " spa-route";
+        }
+      })();
+    </script>
+
     <title>QuickWaiterz - Your Digital Waiter</title>
   </head>
   <body>
