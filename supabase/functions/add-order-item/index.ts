@@ -74,10 +74,15 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // Same NAT reasoning as create-order: a whole cafe shares one public
+    // IP, and this endpoint fires once per line item, so it burns through
+    // a per-IP budget several times faster than order creation does. The
+    // meaningful limit is the per-order one inside add_order_item
+    // (20 per 5 min per order).
     const ip = getClientIp(req);
     const { data: ipOk, error: rateErr } = await supabase.rpc("check_rate_limit", {
       p_bucket_key: `add_item:ip:${ip}`,
-      p_max_hits: 40,
+      p_max_hits: 300,
       p_window_seconds: 300,
     });
     if (rateErr) throw rateErr;

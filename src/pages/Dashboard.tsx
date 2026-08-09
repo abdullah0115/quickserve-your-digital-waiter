@@ -862,11 +862,23 @@ function computeRange(preset: RangePreset, custom: DateRange | undefined): { sin
   return { since, until: now, label: "Last 7 days" };
 }
 
+// Shape returned by the get_business_analytics RPC. Numerics come back
+// from Postgres as strings, hence the Number() coercions at the call site.
+interface AnalyticsPayload {
+  daily: Array<{ date: string; orders: number | string; revenue: number | string }>;
+  top_items: Array<{ name: string; count: number | string; revenue: number | string }>;
+  categories: Array<{ name: string; revenue: number | string }>;
+  hours: Record<string, number | string>;
+  totals: { orders: number | string; revenue: number | string };
+  previous: { orders: number | string; revenue: number | string };
+}
+
 function Analytics({ business, limits }: { business: Business; limits: PlanLimits | null }) {
   const [data, setData] = useState<Array<{ date: string; orders: number; revenue: number }>>([]);
   const [topItems, setTopItems] = useState<Array<{ name: string; count: number; revenue: number }>>([]);
   const [peakHours, setPeakHours] = useState<Array<{ label: string; count: number }>>([]);
   const [categoryBreakdown, setCategoryBreakdown] = useState<Array<{ name: string; revenue: number }>>([]);
+  const [totals, setTotals] = useState<{ orders: number; revenue: number }>({ orders: 0, revenue: 0 });
   const [prevPeriod, setPrevPeriod] = useState<{ orders: number; revenue: number } | null>(null);
   const [todayCount, setTodayCount] = useState<number | null>(null);
   const [rangePreset, setRangePreset] = useState<RangePreset>("week");
@@ -886,70 +898,48 @@ function Analytics({ business, limits }: { business: Business; limits: PlanLimit
       return;
     }
     (async () => {
-      const [{ data: orders }, { data: menuItems }, { data: categories }] = await Promise.all([
-        supabase.from("orders")
-          .select("created_at,total_amount,order_items(name,price,quantity,menu_item_id)")
-          .eq("business_id", business.id).gte("created_at", since.toISOString()).lte("created_at", until.toISOString()),
-        supabase.from("menu_items").select("id,category_id").eq("business_id", business.id),
-        supabase.from("menu_categories").select("id,name").eq("business_id", business.id),
-      ]);
-      const categoryNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
-      const categoryNameByMenuItemId = new Map(
-        (menuItems ?? []).map((m) => [m.id, (m.category_id && categoryNameById.get(m.category_id)) || "Uncategorized"])
-      );
-      const map = new Map<string, { orders: number; revenue: number }>();
-      const cursor = new Date(since);
-      const untilDay = new Date(until); untilDay.setHours(0, 0, 0, 0);
-      while (cursor <= untilDay) {
-        map.set(format(cursor, "MMM dd"), { orders: 0, revenue: 0 });
-        cursor.setDate(cursor.getDate() + 1);
-      }
-      const itemMap = new Map<string, { count: number; revenue: number }>();
-      const categoryMap = new Map<string, number>();
-      const hourCounts = HOUR_BUCKETS.map((b) => ({ label: b.label, count: 0 }));
-      orders?.forEach((o) => {
-        const created = new Date(o.created_at);
-        const k = format(created, "MMM dd");
-        const cur = map.get(k);
-        if (cur) { cur.orders++; cur.revenue += Number(o.total_amount); }
-        o.order_items?.forEach((it) => {
-          const itemCur = itemMap.get(it.name) ?? { count: 0, revenue: 0 };
-          itemCur.count += it.quantity;
-          itemCur.revenue += Number(it.price) * it.quantity;
-          itemMap.set(it.name, itemCur);
-
-          const itemRevenue = Number(it.price) * it.quantity;
-          const catName = (it.menu_item_id && categoryNameByMenuItemId.get(it.menu_item_id)) || "Uncategorized";
-          categoryMap.set(catName, (categoryMap.get(catName) ?? 0) + itemRevenue);
-        });
-        const bucketIdx = HOUR_BUCKETS.findIndex((b) => b.test(created.getHours()));
-        if (bucketIdx !== -1) hourCounts[bucketIdx].count++;
+      // One RPC that aggregates in Postgres, rather than pulling every
+      // order and order_item into the browser to sum them here. For a
+      // busy venue on a 30-day range that was megabytes per range change
+      // and could outrun the 8s statement timeout; this is a few hundred
+      // bytes. See 20260807030000_server_side_analytics.sql.
+      const { data: a, error } = await supabase.rpc("get_business_analytics", {
+        p_business_id: business.id,
+        p_since: since.toISOString(),
+        p_until: until.toISOString(),
+        p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Karachi",
       });
-      setData(Array.from(map.entries()).map(([date, v]) => ({ date, ...v })));
-      setTopItems(
-        Array.from(itemMap.entries())
-          .map(([name, v]) => ({ name, ...v }))
-          .sort((a, b) => b.revenue - a.revenue)
-          .slice(0, 5)
-      );
-      setPeakHours(hourCounts);
-      setCategoryBreakdown(
-        Array.from(categoryMap.entries())
-          .map(([name, revenue]) => ({ name, revenue }))
-          .sort((a, b) => b.revenue - a.revenue)
-      );
+      if (error) { toast.error(error.message); return; }
+      const res = a as unknown as AnalyticsPayload | null;
+      if (!res) return;
 
-      // Previous period = the same length of time immediately before
-      // `since` — works for any selected range, not just the default
-      // rolling 7 days (a custom range's "until" isn't always "now").
-      const prevUntil = since;
-      const prevSince = new Date(since.getTime() - (until.getTime() - since.getTime()));
-      const { data: prevOrders } = await supabase.from("orders").select("total_amount")
-        .eq("business_id", business.id).gte("created_at", prevSince.toISOString()).lt("created_at", prevUntil.toISOString());
-      setPrevPeriod({
-        orders: prevOrders?.length ?? 0,
-        revenue: prevOrders?.reduce((s, o) => s + Number(o.total_amount), 0) ?? 0,
+      setData(
+        res.daily.map((d) => {
+          // Build the label from the date parts directly — new Date("2026-08-07")
+          // parses as UTC midnight, which renders as the previous day for
+          // anyone behind UTC.
+          const [y, m, day] = d.date.split("-").map(Number);
+          return {
+            date: format(new Date(y, m - 1, day), "MMM dd"),
+            orders: Number(d.orders),
+            revenue: Number(d.revenue),
+          };
+        })
+      );
+      setTopItems(res.top_items.map((i) => ({ name: i.name, count: Number(i.count), revenue: Number(i.revenue) })));
+      setCategoryBreakdown(res.categories.map((c) => ({ name: c.name, revenue: Number(c.revenue) })));
+
+      // The RPC returns raw hour-of-day counts so HOUR_BUCKETS stays the
+      // only definition of what counts as "Lunch" — bucketing happens here.
+      const buckets = HOUR_BUCKETS.map((b) => ({ label: b.label, count: 0 }));
+      Object.entries(res.hours).forEach(([hour, count]) => {
+        const i = HOUR_BUCKETS.findIndex((b) => b.test(Number(hour)));
+        if (i !== -1) buckets[i].count += Number(count);
       });
+      setPeakHours(buckets);
+
+      setTotals({ orders: Number(res.totals.orders), revenue: Number(res.totals.revenue) });
+      setPrevPeriod({ orders: Number(res.previous.orders), revenue: Number(res.previous.revenue) });
     })();
   }, [business.id, isTodayOnly, since, until]);
 
@@ -979,8 +969,12 @@ function Analytics({ business, limits }: { business: Business; limits: PlanLimit
     );
   }
 
-  const total = data.reduce((s, d) => s + d.revenue, 0);
-  const orderTotal = data.reduce((s, d) => s + d.orders, 0);
+  // Straight from the server aggregate rather than re-summing the daily
+  // series — the daily buckets are grouped by local calendar day, so an
+  // order sitting right on a range boundary can legitimately fall outside
+  // them while still belonging to the range.
+  const total = totals.revenue;
+  const orderTotal = totals.orders;
 
   const downloadReport = () => {
     const row = (cells: Array<string | number>) =>
