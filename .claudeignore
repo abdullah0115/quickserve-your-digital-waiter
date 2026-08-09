@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build/output
+dist/
+dist-ssr/
+dev-dist/
+.output/
+.vinxi/
+.tanstack/
+.nitro/
+.wrangler/
+
+# Lock files
+package-lock.json
+bun.lockb
+
+# Logs
+*.log
+logs/
+
+# Images / binary assets
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Supabase local state
+supabase/.temp/
+
+# Source maps
+*.map
