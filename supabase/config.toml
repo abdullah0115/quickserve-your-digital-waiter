@@ -6,15 +6,28 @@ project_id = "hkxewwtanrfjrmsarhym"
 # has to stay explicitly listed here, not just the new SMTP block, or a
 # future push will silently reset it back to a CLI default.
 [auth]
-site_url = "https://quickserve-your-digital-waiter.vercel.app"
+# The real domain, not the Vercel one. Anything Supabase can't match
+# against the allow-list below falls back to this value, so while this
+# pointed at *.vercel.app every signup confirmation link dumped the user
+# on the Vercel URL even though they signed up on quickwaiterz.com.
+site_url = "https://quickwaiterz.com"
 # Without this, Supabase rejects any redirectTo that isn't exactly
 # site_url and silently falls back to it — which is why the password
 # recovery link was landing on the bare homepage (still establishing a
 # session there, since the client picks up the recovery token on
-# whatever page it lands on) instead of /auth/reset-password. Both the
-# live production domain and localhost (for local dev testing) are
-# allow-listed.
-additional_redirect_urls = ["https://quickserve-your-digital-waiter.vercel.app/**", "http://localhost:3000/**"]
+# whatever page it lands on) instead of /auth/reset-password.
+#
+# Auth.tsx builds its redirects from window.location.origin, so every
+# origin the app is genuinely served from has to appear here or its links
+# break: the live domain, the Vercel URL (still resolves, and Vercel
+# preview builds use it), and localhost for dev. The port must match
+# vite.config.ts's server.port (3000).
+additional_redirect_urls = [
+  "https://quickwaiterz.com/**",
+  "https://www.quickwaiterz.com/**",
+  "https://quickserve-your-digital-waiter.vercel.app/**",
+  "http://localhost:3000/**",
+]
 
 [auth.email]
 enable_confirmations = true
@@ -30,6 +43,21 @@ verify_enabled = true
 # low sending rate limit meant only for testing. `pass` is read from the
 # local environment at `supabase config push` time — never written to
 # this file — so the App Password itself never touches git.
+#
+# KNOWN PROBLEM — signup confirmations land in spam.
+# Gmail SMTP sends these From a @gmail.com address while the mail body
+# links to quickwaiterz.com. Receiving servers see a sender domain that
+# doesn't match the link domain and has no SPF/DKIM relationship with it,
+# which is the shape of a phishing mail — so it gets filed as spam no
+# matter what the content says. Gmail also rewrites the From header to the
+# authenticated account, so this can't be fixed by changing sender_name.
+#
+# The fix is a transactional provider (Resend, Brevo, SES...) sending from
+# noreply@quickwaiterz.com, with that provider's SPF and DKIM records added
+# to the quickwaiterz.com DNS. Once the sender domain matches the link
+# domain and is cryptographically signed, deliverability stops being a
+# guess. Gmail is also capped around 500 messages/day and its terms don't
+# cover application mail, so it won't survive real signup volume either.
 [auth.email.smtp]
 enabled = true
 host = "smtp.gmail.com"
