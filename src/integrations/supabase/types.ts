@@ -39,24 +39,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      _backup_orders_items_20260713: {
-        Row: {
-          created_at: string | null
-          id: string | null
-          items: Json | null
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string | null
-          items?: Json | null
-        }
-        Update: {
-          created_at?: string | null
-          id?: string | null
-          items?: Json | null
-        }
-        Relationships: []
-      }
       business_analytics: {
         Row: {
           avg_order_value: number
@@ -762,6 +744,15 @@ export type Database = {
           token_number: number
         }[]
       }
+      get_business_analytics: {
+        Args: {
+          p_business_id: string
+          p_since: string
+          p_timezone?: string
+          p_until: string
+        }
+        Returns: Json
+      }
       get_business_watermark: {
         Args: { p_business_id: string }
         Returns: boolean
@@ -818,6 +809,7 @@ export type Database = {
         Returns: boolean
       }
       is_managed_setup_eligible: { Args: { p_city: string }; Returns: boolean }
+      purge_expired_rows: { Args: never; Returns: undefined }
       resolve_qr_code: {
         Args: { p_qr_id: string }
         Returns: {

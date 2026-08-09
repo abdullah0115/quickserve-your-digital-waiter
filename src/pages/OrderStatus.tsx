@@ -30,6 +30,19 @@ const STEPS = [
 ];
 const idx = (s: string) => STEPS.findIndex((x) => x.status === s);
 
+// The status poll is this app's single largest source of Supabase egress —
+// one request every few seconds for every customer waiting on an order. The
+// first couple of minutes after opening the page are when someone is
+// actually watching the screen, so those stay snappy; a tab left open
+// through a twenty-minute wait doesn't need the same rate. Returning to the
+// tab resets the clock (see onForeground), so it always feels live to
+// anyone actually looking at it.
+function pollDelayFor(msSinceActive: number): number {
+  if (msSinceActive < 2 * 60_000) return 5_000;
+  if (msSinceActive < 10 * 60_000) return 10_000;
+  return 20_000;
+}
+
 export default function OrderStatus() {
   const { slug, token } = useParams();
   const [params] = useSearchParams();
@@ -80,12 +93,16 @@ export default function OrderStatus() {
     if (!order?.id || !slug) return;
     if (!ACTIVE_ORDER_STATUSES.has(order.status)) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Reset whenever the customer comes back to the tab — see pollDelayFor.
+    let activeSince = Date.now();
 
-    const poll = async () => {
+    const fetchStatus = async () => {
       const { data } = await supabase
         .rpc("get_order_status", { p_business_slug: slug, p_order_id: order.id })
         .maybeSingle();
-      if (cancelled || !data) return;
+      if (cancelled) return true;
+      if (!data) return false;
       const next = data as unknown as Partial<Order>;
       setOrder((prev) => {
         if (!prev) return prev;
@@ -109,28 +126,47 @@ export default function OrderStatus() {
         }
         return { ...prev, ...next };
       });
-      if (next.status && !ACTIVE_ORDER_STATUSES.has(next.status)) clearInterval(interval);
+      // Terminal status — nothing left to poll for.
+      return Boolean(next.status && !ACTIVE_ORDER_STATUSES.has(next.status));
     };
 
-    const interval = setInterval(poll, 5000);
-    // Mobile browsers throttle or fully suspend setInterval while a tab is
+    const schedule = () => {
+      if (cancelled) return;
+      timer = setTimeout(tick, pollDelayFor(Date.now() - activeSince));
+    };
+
+    const tick = async () => {
+      const done = await fetchStatus();
+      if (!done) schedule();
+    };
+
+    schedule();
+
+    // Mobile browsers throttle or fully suspend timers while a tab is
     // backgrounded (screen locked, customer switched to another app while
     // waiting for food) — exactly the moment a status change matters most.
-    // The interval doesn't reliably catch up on its own once foregrounded
-    // again, so poll immediately on return instead of waiting on the next
+    // Timers don't reliably catch up on their own once foregrounded again,
+    // so poll immediately on return instead of waiting on the next
     // scheduled tick — this is what used to require a manual reload.
-    const onForeground = () => { if (document.visibilityState === "visible") poll(); };
+    // Coming back also restarts the fast-polling window, since a customer
+    // who just opened the tab is the one actually watching it.
+    const onForeground = () => {
+      if (document.visibilityState !== "visible") return;
+      activeSince = Date.now();
+      if (timer) clearTimeout(timer);
+      void tick();
+    };
     document.addEventListener("visibilitychange", onForeground);
     window.addEventListener("focus", onForeground);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onForeground);
       window.removeEventListener("focus", onForeground);
     };
-    // Only re-run on id/slug change (not every status tick) — the interval
-    // clears itself once a terminal status is reached.
+    // Only re-run on id/slug change (not every status tick) — the loop
+    // stops itself once a terminal status is reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, slug]);
 

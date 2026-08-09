@@ -81,10 +81,18 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // Deliberately loose. Everyone on a cafe's wifi shares one public IP,
+    // and Pakistani mobile carriers put many subscribers behind a single
+    // CGNAT address — so a per-IP limit tight enough to be interesting as
+    // anti-abuse would lock out real customers during an iftar or weekend
+    // rush, showing them "too many attempts" as if the app were broken.
+    // The limit that actually stops abuse is the per-table one inside
+    // create_order_with_items (8 per 5 min per QR), which NAT can't
+    // inflate. This ceiling only exists to stop a scripted flood.
     const ip = getClientIp(req);
     const { data: ipOk, error: rateErr } = await supabase.rpc("check_rate_limit", {
       p_bucket_key: `create_order:ip:${ip}`,
-      p_max_hits: 15,
+      p_max_hits: 120,
       p_window_seconds: 300,
     });
     if (rateErr) throw rateErr;
