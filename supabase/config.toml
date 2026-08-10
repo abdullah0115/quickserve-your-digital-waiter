@@ -17,11 +17,10 @@ site_url = "https://quickwaiterz.com"
 # session there, since the client picks up the recovery token on
 # whatever page it lands on) instead of /auth/reset-password.
 #
-# Auth.tsx builds its redirects from window.location.origin, so every
-# origin the app is genuinely served from has to appear here or its links
-# break: the live domain, the Vercel URL (still resolves, and Vercel
-# preview builds use it), and localhost for dev. The port must match
-# vite.config.ts's server.port (3000).
+# Auth.tsx builds redirects from getAppOrigin() (quickwaiterz.com in
+# production), so every origin the app is genuinely served from has to
+# appear here or its links break: the live domain, the Vercel URL (still
+# resolves, and Vercel preview builds use it), and localhost for dev.
 additional_redirect_urls = [
   "https://quickwaiterz.com/**",
   "https://www.quickwaiterz.com/**",

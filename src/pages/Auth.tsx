@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SEO } from "@/components/SEO";
+import { getAppOrigin } from "@/lib/site";
 
 export default function Auth() {
   const [params] = useSearchParams();
@@ -25,7 +26,7 @@ export default function Auth() {
     // actually registered — confirming/denying an account's existence
     // here would let anyone probe for valid signup emails.
     await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
+      redirectTo: `${getAppOrigin()}/auth/reset-password`,
     });
     setResetSent(true);
     setLoading(false);
@@ -39,7 +40,7 @@ export default function Auth() {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/onboarding` },
+          options: { emailRedirectTo: `${getAppOrigin()}/onboarding` },
         });
         if (error) throw error;
         if (data.session) {

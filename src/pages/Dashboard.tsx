@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { SEO } from "@/components/SEO";
 import { NotificationBell } from "@/components/NotificationBell";
 import { cn } from "@/lib/utils";
+import { getAppOrigin } from "@/lib/site";
 import { format } from "date-fns";
 import { businessSettingsSchema, menuItemFormSchema, qrCodeFormSchema, firstZodError } from "@/lib/validation";
 import { useSubscriptionLimits, type PlanLimits, type SubscriptionUsage } from "@/hooks/useSubscriptionLimits";
@@ -761,7 +762,7 @@ function QrManager({ business, limits, usage }: { business: Business; limits: Pl
           // table number — table_number is resolved server-side from this
           // id, so no one can claim to be at a table just by editing the
           // URL (see supabase/migrations/20260710020000_qr_verified_table_number.sql).
-          const url = `${window.location.origin}/${business.slug}/menu?qr=${q.id}`;
+          const url = `${getAppOrigin()}/${business.slug}/menu?qr=${q.id}`;
           return (
             <Card key={q.id}><CardContent className="p-5 text-center">
               <div className="bg-white p-4 rounded-xl inline-block mb-3 shadow-soft">
@@ -794,7 +795,7 @@ function QrManager({ business, limits, usage }: { business: Business; limits: Pl
           onOpenChange={(o) => !o && setPrintTarget(null)}
           businessName={business.name}
           tableLabel={printTarget.table_number}
-          qrUrl={`${window.location.origin}/${business.slug}/menu?qr=${printTarget.id}`}
+          qrUrl={`${getAppOrigin()}/${business.slug}/menu?qr=${printTarget.id}`}
         />
       )}
     </div>
