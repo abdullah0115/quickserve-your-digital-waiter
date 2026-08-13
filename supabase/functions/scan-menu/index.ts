@@ -9,8 +9,13 @@
 //
 // GROQ_API_KEY lives only as a Supabase Edge Function secret (never sent
 // to or readable from the frontend) — see `supabase secrets set`.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.6";
-import { z } from "https://esm.sh/zod@3.23.8";
+import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
+
+declare const Deno: {
+  serve: (handler: (req: Request) => Response | Promise<Response>) => void;
+  env: { get(name: string): string | undefined };
+};
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -136,7 +141,9 @@ Deno.serve(async (req) => {
     .eq("business_id", business_id)
     .single();
   if (planErr) throw planErr;
-  const scanLimit = (planRow?.plan_configs as { scan_menu_limit: number | null } | null)?.scan_menu_limit ?? null;
+  const scanLimit =
+    ((planRow?.plan_configs as { scan_menu_limit: number | null }[] | null)?.[0]
+      ?.scan_menu_limit) ?? null;
 
   const scanBucket = `scan_menu:business:${business_id}`;
   let scansUsed = 0;
