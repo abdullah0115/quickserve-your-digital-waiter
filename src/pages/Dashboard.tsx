@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1187,6 +1188,9 @@ function Analytics({ business, limits }: { business: Business; limits: PlanLimit
 }
 
 function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (b: Business) => void }) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { limits, loading: subscriptionLoading } = useSubscriptionLimits(business.id);
   const [form, setForm] = useState<{ name: string; tagline: string; description: string; phone: string; address: string; cover_image_url: string; theme_preset: ThemePresetKey }>({
     name: business.name, tagline: "", description: "", phone: "", address: "", cover_image_url: "", theme_preset: "warm_classic",
   });
@@ -1207,6 +1211,27 @@ function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (
     if (error) toast.error(error.message);
     else { toast.success("Saved"); onUpdate({ ...business, name: form.name }); }
   };
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const deleteAccount = async () => {
+    if (deleteConfirmation !== "DELETE") return;
+    setDeletingAccount(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("delete-account", {
+        body: { confirmation: deleteConfirmation },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      await supabase.auth.signOut();
+      toast.success("Your account and its data have been deleted.");
+      navigate("/");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't delete your account. Please try again.");
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+  const subscriptionStatusLabel = limits?.status === "trialing" ? "Trial" : limits?.status?.replace(/_/g, " ") ?? "Unavailable";
 
   return (
     <div className="max-w-2xl">
@@ -1235,6 +1260,31 @@ function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (
       </CardContent></Card>
 
       <Card className="mt-6"><CardContent className="p-6">
+        <h2 className="font-display text-lg font-semibold">Account</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">Your business account and subscription details.</p>
+        <dl className="mt-4 divide-y rounded-lg border">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+            <dt className="text-sm text-muted-foreground">Business account email</dt>
+            <dd className="text-sm font-medium break-all">{user?.email ?? "Unavailable"}</dd>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+            <dt className="text-sm text-muted-foreground">Current plan</dt>
+            <dd className="text-sm font-medium">{subscriptionLoading ? "Loading…" : limits?.planName ?? "Unavailable"}</dd>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+            <dt className="text-sm text-muted-foreground">Plan status</dt>
+            <dd className="text-sm font-medium capitalize">{subscriptionLoading ? "Loading…" : subscriptionStatusLabel}</dd>
+          </div>
+          {limits?.planType === "trial" && limits.trialEndsAt && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <dt className="text-sm text-muted-foreground">Trial ends</dt>
+              <dd className="text-sm font-medium">{format(new Date(limits.trialEndsAt), "MMM d, yyyy")}</dd>
+            </div>
+          )}
+        </dl>
+      </CardContent></Card>
+
+      <Card className="mt-6"><CardContent className="p-6">
         <div className="mb-4">
           <h2 className="font-display text-lg font-semibold">Menu Theme</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -1243,6 +1293,35 @@ function SettingsPanel({ business, onUpdate }: { business: Business; onUpdate: (
         </div>
         <ThemePresetPicker value={form.theme_preset} onChange={(theme_preset) => setForm({ ...form, theme_preset })} />
         <Button onClick={save} className="bg-primary text-primary-foreground mt-4">Save Changes</Button>
+      </CardContent></Card>
+
+      <Card className="mt-6 border-destructive/40"><CardContent className="p-6">
+        <h2 className="font-display text-lg font-semibold text-destructive">Delete account</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Permanently deletes your account, business, menu, orders, QR codes, subscription data, notifications, and uploaded images. This cannot be undone.
+        </p>
+        <AlertDialog onOpenChange={(open) => { if (!open && !deletingAccount) setDeleteConfirmation(""); }}>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" className="mt-4">Delete my account</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete your account permanently?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This cannot be undone. Type <strong>DELETE</strong> below to permanently erase your account and all business data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <Input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} placeholder="Type DELETE to confirm" autoComplete="off" />
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingAccount}>Cancel</AlertDialogCancel>
+              <AlertDialogAction asChild>
+                <Button variant="destructive" disabled={deleteConfirmation !== "DELETE" || deletingAccount} onClick={deleteAccount}>
+                  {deletingAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete permanently"}
+                </Button>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent></Card>
     </div>
   );

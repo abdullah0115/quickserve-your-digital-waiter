@@ -46,7 +46,7 @@ interface ScanMenuDialogProps {
 
 type Step = "upload" | "scanning" | "review" | "empty" | "error";
 
-const FALLBACK_ERROR = "Scan abhi available nahi, thodi der baad try karein.";
+const FALLBACK_ERROR = "Scan is not available right now, please try again later.";
 
 async function parseFunctionError(error: unknown): Promise<{ message: string; usage?: { used: number; limit: number } }> {
   const ctx = (error as { context?: Response } | null)?.context;
@@ -85,7 +85,15 @@ export function ScanMenuDialog({
   useEffect(() => {
     if (!open) return;
     supabase.rpc("get_scan_usage", { p_business_id: businessId }).maybeSingle().then(({ data }) => {
-      if (data) setUsage({ used: data.scans_used, limit: data.scans_limit });
+      // Older deployments returned NULL for paid plans to mean "unlimited".
+      // Never let that value be coerced to zero by a numeric comparison and
+      // accidentally disable the scanner before the monthly-quota migration
+      // has reached the database.
+      if (typeof data?.scans_used === "number" && typeof data.scans_limit === "number") {
+        setUsage({ used: data.scans_used, limit: data.scans_limit });
+      } else {
+        setUsage(null);
+      }
     });
   }, [open, businessId]);
 
@@ -206,6 +214,7 @@ export function ScanMenuDialog({
   };
 
   const includedCount = rows.filter((r) => r.include).length;
+  const hasReachedScanLimit = usage !== null && usage.used >= usage.limit;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -217,18 +226,19 @@ export function ScanMenuDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {usage && (
+          <p className="text-xs text-muted-foreground text-center">
+            {usage.used} of {usage.limit} menu scans used this month · {Math.max(usage.limit - usage.used, 0)} remaining
+          </p>
+        )}
+
         {step === "upload" && (
           <div className="space-y-4">
-            {usage && (
-              <p className="text-xs text-muted-foreground text-center">
-                {usage.used} of {usage.limit} menu scans used on your trial
-              </p>
-            )}
-            {usage && usage.used >= usage.limit ? (
+            {hasReachedScanLimit ? (
               <Alert>
                 <TriangleAlert className="w-4 h-4" />
                 <AlertDescription>
-                  You've used all {usage.limit} menu scans included in your trial. Upgrade to keep scanning, or add items manually.
+                  You've used all {usage.limit} menu scans included in your plan this month. Try again next month, or add items manually.
                 </AlertDescription>
               </Alert>
             ) : (
@@ -264,7 +274,7 @@ export function ScanMenuDialog({
               <AlertDescription>{errorMsg}</AlertDescription>
             </Alert>
             <div className="flex gap-2">
-              {!(usage && usage.used >= usage.limit) && (
+              {!hasReachedScanLimit && (
                 <Button variant="outline" className="flex-1" onClick={reset}>Try again</Button>
               )}
               <Button className="flex-1 bg-primary text-primary-foreground" onClick={() => { onManualFallback(); handleOpenChange(false); }}>

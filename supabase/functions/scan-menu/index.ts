@@ -42,12 +42,22 @@ const scanMenuSchema = z.object({
 
 const extractedItemSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  price: z.number().finite().nonnegative(),
+  // Vision models sometimes return "450" or "Rs. 450" even when asked for
+  // a numeric value. Accept both forms here and normalize below so readable
+  // items reach the owner's review screen instead of the empty state.
+  price: z.union([z.number(), z.string().trim().min(1).max(30)]),
   category: z.string().trim().max(60).nullable().optional(),
 });
 const groqOutputSchema = z.object({
   items: z.array(extractedItemSchema).max(200),
 });
+
+function normalizePrice(value: number | string): number | null {
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
+  const numericText = value.replace(/,/g, "").match(/\d+(?:\.\d+)?/)?.[0];
+  const numeric = numericText ? Number(numericText) : Number.NaN;
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
 
 function respond(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -62,7 +72,7 @@ function getClientIp(req: Request): string {
   return "unknown";
 }
 
-const FRIENDLY_UNAVAILABLE = "Scan abhi available nahi, thodi der baad try karein.";
+const FRIENDLY_UNAVAILABLE = "Scan is not available right now, please try again later.";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -137,30 +147,41 @@ Deno.serve(async (req) => {
   // happened — the quota is only recorded once Groq has responded.
   const { data: planRow, error: planErr } = await supabase
     .from("subscriptions")
-    .select("plan_configs(scan_menu_limit)")
+    .select("plan_type, plan_configs(scan_menu_limit)")
     .eq("business_id", business_id)
     .single();
   if (planErr) throw planErr;
-  const scanLimit =
-    ((planRow?.plan_configs as { scan_menu_limit: number | null }[] | null)?.[0]
-      ?.scan_menu_limit) ?? null;
+  // PostgREST returns an object for this many-to-one relationship. Accept an
+  // array too so this remains safe if the relationship metadata changes.
+  const planConfig = planRow?.plan_configs as
+    | { scan_menu_limit: number | null }
+    | Array<{ scan_menu_limit: number | null }>
+    | null;
+  const configuredScanLimit = Array.isArray(planConfig)
+    ? planConfig[0]?.scan_menu_limit
+    : planConfig?.scan_menu_limit;
+  // Older production rows represented paid plans with NULL (unlimited). Use
+  // the new paid allowance during a rolling deployment so an owner is never
+  // blocked between the function release and the SQL migration.
+  const scanLimit = configuredScanLimit ?? (planRow?.plan_type === "trial" ? 3 : 10);
 
   const scanBucket = `scan_menu:business:${business_id}`;
-  let scansUsed = 0;
-  if (scanLimit !== null) {
-    const { count, error: usageErr } = await supabase
-      .from("rate_limit_hits")
-      .select("*", { count: "exact", head: true })
-      .eq("bucket_key", scanBucket);
-    if (usageErr) throw usageErr;
-    scansUsed = count ?? 0;
-    if (scansUsed >= scanLimit) {
-      return respond({
-        error: `You've used all ${scanLimit} menu scans included in your trial. Upgrade to keep scanning, or add items manually.`,
-        scans_used: scanLimit,
-        scans_limit: scanLimit,
-      }, 429);
-    }
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  const { count, error: usageErr } = await supabase
+    .from("rate_limit_hits")
+    .select("*", { count: "exact", head: true })
+    .eq("bucket_key", scanBucket)
+    .gte("created_at", monthStart.toISOString());
+  if (usageErr) throw usageErr;
+  const scansUsed = count ?? 0;
+  if (scansUsed >= scanLimit) {
+    return respond({
+      error: `You've used all ${scanLimit} menu scans included in your plan this month. Try again next month or add items manually.`,
+      scans_used: scanLimit,
+      scans_limit: scanLimit,
+    }, 429);
   }
 
   const groqKey = Deno.env.get("GROQ_API_KEY");
@@ -220,9 +241,7 @@ Rules:
   // Groq actually responded (cost was incurred) — record this against the
   // business's quota now, whatever happens with parsing below. Only
   // worth recording at all when there's an actual cap to count against.
-  if (scanLimit !== null) {
-    await supabase.from("rate_limit_hits").insert({ bucket_key: scanBucket });
-  }
+  await supabase.from("rate_limit_hits").insert({ bucket_key: scanBucket });
   const newScansUsed = scansUsed + 1;
 
   let groqJson: unknown;
@@ -258,5 +277,9 @@ Rules:
     return respond({ data: { items: [], ...usage } });
   }
 
-  return respond({ data: { items: outputParsed.data.items, ...usage } });
+  const items = outputParsed.data.items.flatMap((item) => {
+    const price = normalizePrice(item.price);
+    return price === null ? [] : [{ ...item, price }];
+  });
+  return respond({ data: { items, ...usage } });
 });
