@@ -42,6 +42,18 @@ export default function App() {
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") navigate("/auth/reset-password", { replace: true });
+      // If a confirmation URL is rejected by Supabase Auth's allow-list it
+      // falls back to the bare site URL with the exchange code attached.
+      // Finish that flow here instead of leaving a newly confirmed user home.
+      if (event === "SIGNED_IN" && window.location.pathname === "/" && window.location.search.includes("code=")) {
+        // Run outside the auth callback; Supabase warns against awaiting its
+        // own methods directly inside onAuthStateChange handlers.
+        setTimeout(() => {
+          void supabase.from("businesses").select("id").limit(1).maybeSingle().then(({ data: business }) => {
+            navigate(business ? "/dashboard" : "/onboarding", { replace: true });
+          });
+        }, 0);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, [navigate]);

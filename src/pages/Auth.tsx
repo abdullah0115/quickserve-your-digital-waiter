@@ -89,7 +89,7 @@ export default function Auth() {
 
                   {resetSent ? (
                     <div className="text-sm bg-secondary/10 text-secondary rounded-lg p-4">
-                      If an account exists for that email, a reset link is on its way — check your inbox.
+                      If an account exists for that email, a reset link is on its way check your inbox.
                     </div>
                   ) : (
                     <form onSubmit={handleForgotPassword} className="space-y-4">
