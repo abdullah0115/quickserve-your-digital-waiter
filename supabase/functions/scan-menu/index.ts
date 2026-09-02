@@ -23,7 +23,10 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+// Llama 4 Scout was retired by Groq on 17 July 2026. Qwen 3.6 is the
+// supported replacement for vision/OCR and supports image inputs plus JSON
+// object mode, which this menu scanner relies on.
+const GROQ_MODEL = "qwen/qwen3.6-27b";
 
 const IP_BURST_LIMIT = 10;
 const IP_BURST_WINDOW_SECONDS = 60 * 60;
