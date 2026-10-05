@@ -58,7 +58,6 @@ async function parseFunctionError(error: unknown): Promise<{ message: string; us
         : undefined;
       if (typeof body?.error === "string") return { message: body.error, usage };
     } catch {
-      // fall through to generic message below
     }
   }
   return { message: FALLBACK_ERROR };

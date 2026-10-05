@@ -379,6 +379,51 @@ export type Database = {
           },
         ]
       }
+      order_bill_edits: {
+        Row: {
+          business_id: string
+          discount_amount: number
+          items: Json
+          note: string | null
+          order_id: string
+          service_charge: number
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          discount_amount?: number
+          items?: Json
+          note?: string | null
+          order_id: string
+          service_charge?: number
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          discount_amount?: number
+          items?: Json
+          note?: string | null
+          order_id?: string
+          service_charge?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_bill_edits_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_bill_edits_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           business_id: string

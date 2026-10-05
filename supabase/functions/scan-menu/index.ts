@@ -148,44 +148,26 @@ Deno.serve(async (req) => {
   // account scans. Read (not incremented) here, so a Groq outage
   // doesn't cost part of the quota for a scan that never actually
   // happened — the quota is only recorded once Groq has responded.
-  const { data: planRow, error: planErr } = await supabase
-    .from("subscriptions")
-    .select("plan_type, plan_configs(scan_menu_limit)")
-    .eq("business_id", business_id)
-    .single();
-  if (planErr) throw planErr;
-  // PostgREST returns an object for this many-to-one relationship. Accept an
-  // array too so this remains safe if the relationship metadata changes.
-  const planConfig = planRow?.plan_configs as
-    | { scan_menu_limit: number | null }
-    | Array<{ scan_menu_limit: number | null }>
-    | null;
-  const configuredScanLimit = Array.isArray(planConfig)
-    ? planConfig[0]?.scan_menu_limit
-    : planConfig?.scan_menu_limit;
-  // Older production rows represented paid plans with NULL (unlimited). Use
-  // the new paid allowance during a rolling deployment so an owner is never
-  // blocked between the function release and the SQL migration.
-  const scanLimit = configuredScanLimit ?? (planRow?.plan_type === "trial" ? 3 : 10);
-
-  const scanBucket = `scan_menu:business:${business_id}`;
-  const monthStart = new Date();
-  monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
-  const { count, error: usageErr } = await supabase
-    .from("rate_limit_hits")
-    .select("*", { count: "exact", head: true })
-    .eq("bucket_key", scanBucket)
-    .gte("created_at", monthStart.toISOString());
-  if (usageErr) throw usageErr;
-  const scansUsed = count ?? 0;
-  if (scansUsed >= scanLimit) {
+  // Reserve quota before spending a Groq request. The reservation happens in
+  // one locked database transaction, so a trial can never exceed three scans.
+  const { data: quotaRows, error: quotaErr } = await supabase.rpc("reserve_scan_menu_quota", {
+    p_business_id: business_id,
+  });
+  if (quotaErr) throw quotaErr;
+  const quota = (quotaRows as Array<{
+    allowed: boolean; scans_used: number; scans_limit: number; quota_hit_id: number | null; is_trial: boolean;
+  }> | null)?.[0];
+  if (!quota) throw new Error("Couldn't check the menu scan allowance");
+  if (!quota.allowed) {
     return respond({
-      error: `You've used all ${scanLimit} menu scans included in your plan this month. Try again next month or add items manually.`,
-      scans_used: scanLimit,
-      scans_limit: scanLimit,
+      error: quota.is_trial
+        ? `You've used all ${quota.scans_limit} menu scans included in your trial. Add items manually or upgrade to keep scanning.`
+        : `You've used all ${quota.scans_limit} menu scans included in your plan this month. Try again next month or add items manually.`,
+      scans_used: quota.scans_used,
+      scans_limit: quota.scans_limit,
     }, 429);
   }
+  const quotaHitId = quota.quota_hit_id;
 
   const groqKey = Deno.env.get("GROQ_API_KEY");
   if (!groqKey) {
@@ -230,14 +212,17 @@ Rules:
     });
   } catch (err) {
     console.error("scan-menu: Groq request failed:", err);
+    if (quotaHitId !== null) await supabase.rpc("release_scan_menu_quota", { p_quota_hit_id: quotaHitId });
     return respond({ error: FRIENDLY_UNAVAILABLE }, 503);
   }
 
   if (groqRes.status === 429) {
+    if (quotaHitId !== null) await supabase.rpc("release_scan_menu_quota", { p_quota_hit_id: quotaHitId });
     return respond({ error: FRIENDLY_UNAVAILABLE }, 503);
   }
   if (!groqRes.ok) {
     console.error("scan-menu: Groq returned", groqRes.status, await groqRes.text().catch(() => ""));
+    if (quotaHitId !== null) await supabase.rpc("release_scan_menu_quota", { p_quota_hit_id: quotaHitId });
     return respond({ error: FRIENDLY_UNAVAILABLE }, 503);
   }
 

@@ -60,7 +60,7 @@ export default function Home() {
       .from("plan_configs")
       .select("plan_type,monthly_price,currency")
       .eq("is_active", true)
-      .in("plan_type", ["self_serve_pkr", "international_usd"])
+      .in("plan_type", ["managed_pkr", "international_usd"])
       .then(({ data }) => setHomePlans((data as typeof homePlans) ?? []));
   }, []);
 

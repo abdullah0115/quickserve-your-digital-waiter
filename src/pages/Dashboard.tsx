@@ -5,7 +5,7 @@ import {
   Coffee, LayoutDashboard, UtensilsCrossed, ClipboardList, QrCode as QrIcon,
   BarChart3, Settings, LogOut, Plus, Loader2, ChefHat, Bell, CheckCircle, Clock,
   Trash2, ExternalLink, Eye, Monitor, TrendingUp, TrendingDown, ShieldCheck, Printer, ScanLine, TriangleAlert, RefreshCw,
-  Download,
+  Download, ReceiptText,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { QrPrintDialog } from "@/components/qr-print/QrPrintDialog";
@@ -38,6 +38,7 @@ import { ImageUploadField } from "@/components/ImageUploadField";
 import { deleteMenuImage } from "@/lib/uploadMenuImage";
 import { ThemePresetPicker } from "@/components/menu/ThemePresetPicker";
 import type { ThemePresetKey } from "@/lib/theme";
+import { OrderBillDialog } from "@/components/billing/OrderBillDialog";
 
 interface Business { id: string; name: string; slug: string; }
 interface Category { id: string; name: string; display_order: number; }
@@ -46,16 +47,17 @@ interface MenuItem {
   category_id: string | null; is_available: boolean; is_featured: boolean; image_url: string | null;
 }
 interface Order {
-  id: string; token_number: number; customer_name: string;
+  id: string; business_id: string; token_number: number; customer_name: string;
   order_items: Array<{ name: string; quantity: number; price: number; added_by_name: string; created_at: string }>;
   total_amount: number; status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
-  table_number: string | null; order_type: string; created_at: string;
+  table_number: string | null; order_type: string; notes: string | null; created_at: string;
 }
 interface QrCode { id: string; table_number: string; label: string; is_active: boolean; }
 
 const NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "orders", label: "Live Orders", icon: ClipboardList },
+  { id: "billing", label: "Billing", icon: ReceiptText },
   { id: "menu", label: "Menu", icon: UtensilsCrossed },
   { id: "qr", label: "QR Codes", icon: QrIcon },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
@@ -208,6 +210,7 @@ export default function Dashboard() {
             )}
             {tab === "overview" && <Overview business={business} />}
             {tab === "orders" && <OrdersKDS business={business} />}
+            {tab === "billing" && <BillingPanel business={business} />}
             {tab === "menu" && <MenuManager business={business} />}
             {tab === "qr" && <QrManager business={business} limits={limits} usage={planUsage} />}
             {tab === "analytics" && <Analytics business={business} limits={limits} />}
@@ -406,6 +409,55 @@ function OrdersKDS({ business }: { business: Business }) {
       )}
     </div>
   );
+}
+
+function BillingPanel({ business }: { business: Business }) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [billOrder, setBillOrder] = useState<Order | null>(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.from("orders").select("*, order_items(*)")
+      .eq("business_id", business.id)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) toast.error(error.message);
+    else setOrders((data as unknown as Order[]).map((order) => ({
+      ...order,
+      order_items: [...order.order_items].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    })));
+    setLoading(false);
+  }, [business.id]);
+
+  useEffect(() => {
+    load();
+    const channel = supabase.channel(`billing-${business.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `business_id=eq.${business.id}` }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [business.id, load]);
+
+  return <div>
+    <div className="mb-6">
+      <h1 className="font-display text-3xl font-bold">Billing</h1>
+      <p className="text-muted-foreground mt-1">Every order automatically has a bill. Open one to review, edit, and download it.</p>
+    </div>
+    {loading ? <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div> :
+      <Card><CardContent className="p-0 divide-y">
+        {orders.map((order) => <div key={order.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="font-semibold">Order #{order.token_number} <span className="text-sm font-normal text-muted-foreground">· {order.customer_name}</span></div>
+            <div className="text-xs text-muted-foreground mt-1">{order.table_number ? `Table ${order.table_number}` : "Takeaway"} · {format(new Date(order.created_at), "MMM d, h:mm a")} · {order.status}</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-mono font-semibold">PKR {Number(order.total_amount).toLocaleString()}</span>
+            <Button size="sm" variant="outline" onClick={() => setBillOrder(order)}><ReceiptText className="w-4 h-4 mr-1" /> Bill</Button>
+          </div>
+        </div>)}
+        {orders.length === 0 && <div className="p-12 text-center text-muted-foreground">Bills will appear automatically when customers place orders.</div>}
+      </CardContent></Card>}
+    <OrderBillDialog open={!!billOrder} onOpenChange={(open) => { if (!open) setBillOrder(null); }} order={billOrder} businessName={business.name} />
+  </div>;
 }
 
 function MenuManager({ business }: { business: Business }) {

@@ -25,7 +25,7 @@ interface PlanConfig {
 // Which plan_type shows under each region toggle. Trial is region-independent
 // (it's the same everywhere) so it's shown in both.
 const REGION_PLANS: Record<Region, string[]> = {
-  Pakistan: ["trial", "self_serve_pkr", "managed_pkr"],
+  Pakistan: ["trial", "managed_pkr"],
   International: ["trial", "international_usd"],
 };
 
@@ -81,7 +81,7 @@ export default function Pricing() {
 
   const trialFollowUpPrice = () => {
     const followUp = region === "Pakistan"
-      ? plans.find((p) => p.plan_type === "self_serve_pkr")
+      ? plans.find((p) => p.plan_type === "managed_pkr")
       : plans.find((p) => p.plan_type === "international_usd");
     if (!followUp) return null;
     const symbol = followUp.currency === "USD" ? "$" : "PKR ";
@@ -92,7 +92,7 @@ export default function Pricing() {
     <>
       <SEO
         title="Pricing — QuickWaiterz QR Ordering System"
-        description="Simple pricing for QuickWaiterz's QR code menu ordering software: a 14-day free trial, then Pakistan (PKR) or international (USD) plans for restaurants."
+        description="Simple pricing for QuickWaiterz's QR code menu ordering software: a 14-day free trial, then managed Pakistan (PKR) or international (USD) plans for restaurants."
       />
       <div className="min-h-screen bg-background">
         <MarketingNav />
@@ -107,7 +107,7 @@ export default function Pricing() {
               Pricing that scales with you
             </h1>
             <p className="mt-5 text-lg text-muted-foreground max-w-xl mx-auto">
-              14-day free trial, then {trialFollowUpPrice() ?? "a plan that fits"}. No hidden fees.
+              14-day free trial, then {trialFollowUpPrice() ?? "a plan that fits"}.
             </p>
 
             <div className="mt-10 inline-flex items-center bg-muted rounded-full p-1.5 border">
@@ -134,11 +134,11 @@ export default function Pricing() {
         </section>
 
         <section className="container mx-auto px-4 lg:px-8 pb-16">
-          <div className={cn("grid gap-6 max-w-5xl mx-auto", region === "Pakistan" ? "md:grid-cols-3" : "md:grid-cols-2 max-w-3xl")}>
+          <div className={cn("grid gap-6 mx-auto md:grid-cols-2", region === "Pakistan" ? "max-w-5xl" : "max-w-3xl")}>
             {visiblePlans.map((plan, i) => {
               const isTrial = plan.plan_type === "trial";
               const isManaged = plan.plan_type === "managed_pkr";
-              const popular = plan.plan_type === "self_serve_pkr";
+              const popular = isManaged;
               return (
                 <motion.div
                   key={plan.plan_type}
@@ -172,7 +172,7 @@ export default function Pricing() {
                     {isTrial && <div className="text-sm text-muted-foreground mt-1">14 days, no credit card</div>}
                     {isManaged && plan.setup_fee > 0 && (
                       <div className="text-xs text-secondary mt-1">
-                        + PKR {plan.setup_fee.toLocaleString()} one-time setup fee
+                        + PKR {plan.setup_fee.toLocaleString()} minimum one-time setup fee (up to 10 tables)
                       </div>
                     )}
                   </div>
@@ -206,7 +206,7 @@ export default function Pricing() {
                   </Link>
                   {isManaged && !managedEligible && (
                     <p className="text-xs text-destructive mt-2 text-center">
-                      Managed Setup isn't available in your city yet — you can still use Self-Serve.
+                      Managed Setup isn't available in your city yet. Contact us to discuss availability.
                     </p>
                   )}
                 </motion.div>
@@ -216,7 +216,7 @@ export default function Pricing() {
 
           {region === "Pakistan" && (
             <p className="text-center text-sm text-muted-foreground mt-8">
-              Not in Karachi? You can still use the Self-Serve plan anywhere in Pakistan — just print your own QR codes.
+              Managed setup availability depends on your city. Contact us to discuss coverage.
             </p>
           )}
         </section>
